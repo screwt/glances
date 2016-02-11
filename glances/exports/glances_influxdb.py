@@ -141,12 +141,21 @@ class Export(GlancesExport):
             name = self.prefix + '.' + name
         # logger.info(self.prefix)
         # Create DB input
+
+        new_col = []
+        for col in columns:
+            if col[0:2] == "/.":
+                new_col.append(col[2:])
+            else:
+                new_col.append(col)
+                
+        
         if self.version == INFLUXDB_09:
             data = [{'measurement': name,
                      'tags': self.tags,
-                     'fields': dict(zip(columns, points))}]
+                     'fields': dict(zip(new_col, points))}]
         else:
-            data = [{'name': name, 'columns': columns, 'points': [points]}]
+            data = [{'name': name, 'columns': new_col, 'points': [points]}]
         # Write input to the InfluxDB database
         try:
             self.client.write_points(data)
