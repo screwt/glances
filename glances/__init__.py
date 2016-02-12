@@ -29,6 +29,7 @@ import locale
 import platform
 import signal
 import sys
+import prctl
 
 # Import psutil
 try:
@@ -106,7 +107,7 @@ def main():
 
     # Create the Glances main instance
     core = GlancesMain()
-
+    prctl.prctl(prctl.PDEATHSIG, signal.SIGTERM)
     # Catch the CTRL-C signal
     signal.signal(signal.SIGINT, __signal_handler)
 
