@@ -1,28 +1,34 @@
-Welcome to Glances documentation!
-=================================
+Glances
+=======
 
-**Glances** is a cross-platform curses-based monitoring tool written in Python.
+.. image:: _static/screenshot-wide.png
 
-It uses the psutil library and some internal code to get information from your system.
+Glances is a cross-platform monitoring tool which aims to present a
+maximum of information in a minimum of space through a curses or Web
+based interface. It can adapt dynamically the displayed information
+depending on the terminal size.
 
-.. image:: images/screenshot-wide.png
+It can also work in client/server mode. Remote monitoring could be
+done via terminal, Web interface or API (XMLRPC and RESTful).
 
-Get the code
-------------
+Glances is written in Python and uses the `psutil`_ library to get
+information from your system.
 
-The `source <http://github.com/nicolargo/glances>`_ is available on GitHub.
+Stats can also be exported to external time/value databases.
 
-Contents
---------
+.. _psutil: https://github.com/giampaolo/psutil
+
+Table of Contents
+=================
 
 .. toctree::
    :maxdepth: 2
 
-   glances-doc
-
-Indices and tables
-==================
-
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+   install
+   quickstart
+   cmds
+   config
+   aoa/index
+   gw/index
+   api
+   support

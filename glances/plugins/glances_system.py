@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -19,12 +19,12 @@
 
 """System plugin."""
 
-# Import system libs
 import os
 import platform
 import re
+from io import open
 
-# Import Glances libs
+from glances.compat import iteritems
 from glances.plugins.glances_plugin import GlancesPlugin
 
 # SNMP OID
@@ -38,7 +38,8 @@ snmp_oid = {'default': {'hostname': '1.3.6.1.2.1.1.5.0',
 # Dict (key: OS short name) of dict (reg exp OID to human)
 # Windows:
 # http://msdn.microsoft.com/en-us/library/windows/desktop/ms724832%28v=vs.85%29.aspx
-snmp_to_human = {'windows': {'Windows Version 6.3': 'Windows 8.1 or Server 2012R2',
+snmp_to_human = {'windows': {'Windows Version 10.0': 'Windows 10 or Server 2016',
+                             'Windows Version 6.3': 'Windows 8.1 or Server 2012R2',
                              'Windows Version 6.2': 'Windows 8 or Server 2012',
                              'Windows Version 6.1': 'Windows 7 or Server 2008R2',
                              'Windows Version 6.0': 'Windows Vista or Server 2008',
@@ -62,7 +63,7 @@ def _linux_os_release():
             for line in f:
                 for key in keys:
                     if line.startswith(key):
-                        ashtray[key] = line.strip().split('=')[1][1:-1]
+                        ashtray[key] = re.sub(r'^"|"$', '', line.strip().split('=')[1])
     except (OSError, IOError):
         return pretty_name
 
@@ -70,7 +71,7 @@ def _linux_os_release():
         if 'NAME' in ashtray:
             pretty_name = ashtray['NAME']
         if 'VERSION_ID' in ashtray:
-            pretty_name += ' {0}'.format(ashtray['VERSION_ID'])
+            pretty_name += ' {}'.format(ashtray['VERSION_ID'])
 
     return pretty_name
 
@@ -84,7 +85,7 @@ class Plugin(GlancesPlugin):
 
     def __init__(self, args=None):
         """Init the plugin."""
-        GlancesPlugin.__init__(self, args=args)
+        super(Plugin, self).__init__(args=args)
 
         # We want to display the stat in the curse interface
         self.display_curse = True
@@ -96,6 +97,8 @@ class Plugin(GlancesPlugin):
         """Reset/init the stats."""
         self.stats = {}
 
+    @GlancesPlugin._check_decorator
+    @GlancesPlugin._log_result_decorator
     def update(self):
         """Update the host/system info using the input method.
 
@@ -110,13 +113,18 @@ class Plugin(GlancesPlugin):
             self.stats['hostname'] = platform.node()
             self.stats['platform'] = platform.architecture()[0]
             if self.stats['os_name'] == "Linux":
-                linux_distro = platform.linux_distribution()
-                if linux_distro[0] == '':
+                try:
+                    linux_distro = platform.linux_distribution()
+                except AttributeError:
                     self.stats['linux_distro'] = _linux_os_release()
                 else:
-                    self.stats['linux_distro'] = ' '.join(linux_distro[:2])
+                    if linux_distro[0] == '':
+                        self.stats['linux_distro'] = _linux_os_release()
+                    else:
+                        self.stats['linux_distro'] = ' '.join(linux_distro[:2])
                 self.stats['os_version'] = platform.release()
-            elif self.stats['os_name'] == "FreeBSD":
+            elif (self.stats['os_name'].endswith('BSD') or
+                  self.stats['os_name'] == 'SunOS'):
                 self.stats['os_version'] = platform.release()
             elif self.stats['os_name'] == "Darwin":
                 self.stats['os_version'] = platform.mac_ver()[0]
@@ -133,9 +141,9 @@ class Plugin(GlancesPlugin):
             if self.stats['os_name'] == "Linux":
                 self.stats['hr_name'] = self.stats['linux_distro']
             else:
-                self.stats['hr_name'] = '{0} {1}'.format(
+                self.stats['hr_name'] = '{} {}'.format(
                     self.stats['os_name'], self.stats['os_version'])
-            self.stats['hr_name'] += ' {0}'.format(self.stats['platform'])
+            self.stats['hr_name'] += ' {}'.format(self.stats['platform'])
 
         elif self.input_method == 'snmp':
             # Update stats using SNMP
@@ -148,11 +156,7 @@ class Plugin(GlancesPlugin):
             self.stats['os_name'] = self.stats['system_name']
             # Windows OS tips
             if self.short_system_name == 'windows':
-                try:
-                    iteritems = snmp_to_human['windows'].iteritems()
-                except AttributeError:
-                    iteritems = snmp_to_human['windows'].items()
-                for r, v in iteritems:
+                for r, v in iteritems(snmp_to_human['windows']):
                     if re.search(r, self.stats['system_name']):
                         self.stats['os_name'] = v
                         break
@@ -184,17 +188,17 @@ class Plugin(GlancesPlugin):
         ret.append(self.curse_add_line(msg, "TITLE"))
         # System info
         if self.stats['os_name'] == "Linux" and self.stats['linux_distro']:
-            msg = ' ({0} {1} / {2} {3})'.format(self.stats['linux_distro'],
-                                                self.stats['platform'],
-                                                self.stats['os_name'],
-                                                self.stats['os_version'])
+            msg = ' ({} {} / {} {})'.format(self.stats['linux_distro'],
+                                            self.stats['platform'],
+                                            self.stats['os_name'],
+                                            self.stats['os_version'])
         else:
             try:
-                msg = ' ({0} {1} {2})'.format(self.stats['os_name'],
-                                              self.stats['os_version'],
-                                              self.stats['platform'])
+                msg = ' ({} {} {})'.format(self.stats['os_name'],
+                                           self.stats['os_version'],
+                                           self.stats['platform'])
             except Exception:
-                msg = ' ({0})'.format(self.stats['os_name'])
+                msg = ' ({})'.format(self.stats['os_name'])
         ret.append(self.curse_add_line(msg, optional=True))
 
         # Return the message with decoration

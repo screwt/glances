@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -19,13 +19,10 @@
 
 """Uptime plugin."""
 
-# Import system libs
 from datetime import datetime, timedelta
 
-# Import Glances libs
 from glances.plugins.glances_plugin import GlancesPlugin
 
-# Import psutil
 import psutil
 
 # SNMP OID
@@ -41,7 +38,7 @@ class Plugin(GlancesPlugin):
 
     def __init__(self, args=None):
         """Init the plugin."""
-        GlancesPlugin.__init__(self, args=args)
+        super(Plugin, self).__init__(args=args)
 
         # We want to display the stat in the curse interface
         self.display_curse = True
@@ -50,12 +47,22 @@ class Plugin(GlancesPlugin):
         self.align = 'right'
 
         # Init the stats
+        self.uptime = datetime.now() - datetime.fromtimestamp(psutil.boot_time())
         self.reset()
 
     def reset(self):
         """Reset/init the stats."""
         self.stats = {}
 
+    def get_export(self):
+        """Overwrite the default export method.
+
+        Export uptime in seconds.
+        """
+        return {'seconds': self.uptime.seconds}
+
+    @GlancesPlugin._check_decorator
+    @GlancesPlugin._log_result_decorator
     def update(self):
         """Update uptime stat using the input method."""
         # Reset stats
@@ -63,10 +70,10 @@ class Plugin(GlancesPlugin):
 
         if self.input_method == 'local':
             # Update stats using the standard system lib
-            uptime = datetime.now() - datetime.fromtimestamp(psutil.boot_time())
+            self.uptime = datetime.now() - datetime.fromtimestamp(psutil.boot_time())
 
             # Convert uptime to string (because datetime is not JSONifi)
-            self.stats = str(uptime).split('.')[0]
+            self.stats = str(self.uptime).split('.')[0]
         elif self.input_method == 'snmp':
             # Update stats using SNMP
             uptime = self.get_stats_snmp(snmp_oid=snmp_oid)['_uptime']
@@ -81,4 +88,4 @@ class Plugin(GlancesPlugin):
 
     def msg_curse(self, args=None):
         """Return the string to display in the curse interface."""
-        return [self.curse_add_line('Uptime: {0}'.format(self.stats))]
+        return [self.curse_add_line('Uptime: {}'.format(self.stats))]

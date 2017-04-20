@@ -3,7 +3,7 @@
 #
 # Glances - An eye on your system
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -23,16 +23,13 @@
 import shlex
 import subprocess
 import time
+import numbers
 import unittest
 
-from glances.core.glances_globals import version
+from glances import __version__
+from glances.compat import text_type
 
 import requests
-
-try:
-    text_type = str
-except NameError:
-    text_type = unicode
 
 SERVER_PORT = 61234
 URL = "http://localhost:%s/api/2" % SERVER_PORT
@@ -40,11 +37,10 @@ pid = None
 
 # Unitest class
 # ==============
-print('RESTful API unitary tests for Glances %s' % version)
+print('RESTful API unitary tests for Glances %s' % __version__)
 
 
 class TestGlances(unittest.TestCase):
-
     """Test Glances class."""
 
     def setUp(self):
@@ -60,8 +56,8 @@ class TestGlances(unittest.TestCase):
         print("Run the Glances Web Server on port %s" % SERVER_PORT)
         args = shlex.split(cmdline)
         pid = subprocess.Popen(args)
-        print("Please wait...")
-        time.sleep(3)
+        print("Please wait 5 seconds...")
+        time.sleep(5)
 
         self.assertTrue(pid is not None)
 
@@ -97,8 +93,9 @@ class TestGlances(unittest.TestCase):
             self.assertTrue(req.ok)
             if p in ('uptime', 'now'):
                 self.assertIsInstance(req.json(), text_type)
-            elif p in ('fs', 'monitor', 'percpu', 'sensors', 'alert', 'processlist',
-                       'diskio', 'hddtemp', 'batpercent', 'network'):
+            elif p in ('fs', 'percpu', 'sensors', 'alert', 'processlist', 'diskio',
+                       'hddtemp', 'batpercent', 'network', 'folders', 'amps', 'ports',
+                       'irq', 'wifi', 'gpu'):
                 self.assertIsInstance(req.json(), list)
             elif p in ('psutilversion', 'help'):
                 pass
@@ -116,7 +113,8 @@ class TestGlances(unittest.TestCase):
             req = requests.get("%s/%s/%s" % (URL, method, i))
             self.assertTrue(req.ok)
             self.assertIsInstance(req.json(), dict)
-            self.assertIsInstance(req.json()[i], float)
+            print(req.json()[i])
+            self.assertIsInstance(req.json()[i], numbers.Number)
 
     def test_005_values(self):
         """Values."""
@@ -171,6 +169,31 @@ class TestGlances(unittest.TestCase):
             req = requests.get("%s/%s/views" % (URL, p))
             self.assertTrue(req.ok)
             self.assertIsInstance(req.json(), dict)
+
+    def test_010_history(self):
+        """History."""
+        method = "history"
+        print('INFO: [TEST_010] History')
+        print("HTTP RESTful request: %s/cpu/%s" % (URL, method))
+        req = requests.get("%s/cpu/%s" % (URL, method))
+        self.assertIsInstance(req.json(), dict)
+        self.assertIsInstance(req.json()['user'], list)
+        self.assertTrue(len(req.json()['user']) > 0)
+        print("HTTP RESTful request: %s/cpu/%s/3" % (URL, method))
+        req = requests.get("%s/cpu/%s/3" % (URL, method))
+        self.assertIsInstance(req.json(), dict)
+        self.assertIsInstance(req.json()['user'], list)
+        self.assertTrue(len(req.json()['user']) > 1)
+        print("HTTP RESTful request: %s/cpu/system/%s" % (URL, method))
+        req = requests.get("%s/cpu/system/%s" % (URL, method))
+        self.assertIsInstance(req.json(), dict)
+        self.assertIsInstance(req.json()['system'], list)
+        self.assertTrue(len(req.json()['system']) > 0)
+        print("HTTP RESTful request: %s/cpu/system/%s/3" % (URL, method))
+        req = requests.get("%s/cpu/system/%s/3" % (URL, method))
+        self.assertIsInstance(req.json(), dict)
+        self.assertIsInstance(req.json()['system'], list)
+        self.assertTrue(len(req.json()['system']) > 1)
 
     def test_999_stop_server(self):
         """Stop the Glances Web Server."""

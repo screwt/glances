@@ -1,6 +1,6 @@
 glancesApp.filter('min_size', function() {
-    return function(input) {
-        var max = 8;
+    return function(input, max) {
+        var max = max || 8;
         if (input.length > max) {
             return "_" + input.substring(input.length - max)
         }
@@ -81,7 +81,7 @@ glancesApp.filter('leftPad', function($filter) {
     return function (value, length, chars) {
       length = length || 0;
       chars = chars || ' ';
-      return _.padLeft(value, length, chars);
+      return _.padStart(value, length, chars);
     }
 });
 

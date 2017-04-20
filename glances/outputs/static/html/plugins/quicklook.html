@@ -1,5 +1,8 @@
+<div class="cpu-name">
+    {{ statsQuicklook.cpu_name }}
+</div>
 <div class="table">
-    <div class="table-row" ng-show="!show.per_cpu">
+    <div class="table-row" ng-show="!arguments.percpu">
         <div class="table-cell text-left">CPU</div>
         <div class="table-cell">
             <div class="progress">
@@ -12,7 +15,7 @@
             {{ statsQuicklook.cpu }}%
         </div>
     </div>
-    <div class="table-row" ng-show="show.per_cpu" ng-repeat="percpu in statsQuicklook.percpus">
+    <div class="table-row" ng-show="arguments.percpu" ng-repeat="percpu in statsQuicklook.percpus">
         <div class="table-cell text-left">CPU{{ percpu.number }}</div>
         <div class="table-cell">
             <div class="progress">

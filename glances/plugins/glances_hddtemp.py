@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -19,12 +19,11 @@
 
 """HDD temperature plugin."""
 
-# Import system libs
 import os
 import socket
 
-# Import Glances libs
-from glances.core.glances_logging import logger
+from glances.compat import nativestr, range
+from glances.logger import logger
 from glances.plugins.glances_plugin import GlancesPlugin
 
 
@@ -37,7 +36,7 @@ class Plugin(GlancesPlugin):
 
     def __init__(self, args=None):
         """Init the plugin."""
-        GlancesPlugin.__init__(self, args=args)
+        super(Plugin, self).__init__(args=args)
 
         # Init the sensor class
         self.glancesgrabhddtemp = GlancesGrabHDDTemp(args=args)
@@ -53,6 +52,8 @@ class Plugin(GlancesPlugin):
         """Reset/init the stats."""
         self.stats = []
 
+    @GlancesPlugin._check_decorator
+    @GlancesPlugin._log_result_decorator
     def update(self):
         """Update HDD stats using the input method."""
         # Reset stats
@@ -91,11 +92,15 @@ class GlancesGrabHDDTemp(object):
         # Reset the list
         self.reset()
 
-        # Only update if --disable-hddtemp is not set
-        if self.args is None or self.args.disable_hddtemp:
-            return
-
         # Fetch the data
+        # data = ("|/dev/sda|WDC WD2500JS-75MHB0|44|C|"
+        #         "|/dev/sdb|WDC WD2500JS-75MHB0|35|C|"
+        #         "|/dev/sdc|WDC WD3200AAKS-75B3A0|45|C|"
+        #         "|/dev/sdd|WDC WD3200AAKS-75B3A0|45|C|"
+        #         "|/dev/sde|WDC WD3200AAKS-75B3A0|43|C|"
+        #         "|/dev/sdf|???|ERR|*|"
+        #         "|/dev/sdg|HGST HTS541010A9E680|SLP|*|"
+        #         "|/dev/sdh|HGST HTS541010A9E680|UNK|*|")
         data = self.fetch()
 
         # Exit if no data
@@ -116,11 +121,17 @@ class GlancesGrabHDDTemp(object):
         for item in range(devices):
             offset = item * 5
             hddtemp_current = {}
-            device = fields[offset + 1].decode('utf-8')
-            device = os.path.basename(device)
+            device = os.path.basename(nativestr(fields[offset + 1]))
             temperature = fields[offset + 3]
+            unit = nativestr(fields[offset + 4])
             hddtemp_current['label'] = device
-            hddtemp_current['value'] = temperature.decode('utf-8')
+            try:
+                hddtemp_current['value'] = float(temperature)
+            except ValueError:
+                # Temperature could be 'ERR', 'SLP' or 'UNK' (see issue #824)
+                # Improper bytes/unicode in glances_hddtemp.py (see issue #887)
+                hddtemp_current['value'] = nativestr(temperature)
+            hddtemp_current['unit'] = unit
             self.hddtemp_list.append(hddtemp_current)
 
     def fetch(self):
@@ -130,12 +141,14 @@ class GlancesGrabHDDTemp(object):
             sck = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sck.connect((self.host, self.port))
             data = sck.recv(4096)
-            sck.close()
         except socket.error as e:
-            logger.warning("Can not connect to an HDDtemp server ({0}:{1} => {2})".format(self.host, self.port, e))
+            logger.debug("Cannot connect to an HDDtemp server ({}:{} => {})".format(self.host, self.port, e))
             logger.debug("Disable the HDDtemp module. Use the --disable-hddtemp to hide the previous message.")
-            self.args.disable_hddtemp = True
+            if self.args is not None:
+                self.args.disable_hddtemp = True
             data = ""
+        finally:
+            sck.close()
 
         return data
 

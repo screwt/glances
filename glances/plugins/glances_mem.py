@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -19,6 +19,7 @@
 
 """Virtual memory plugin."""
 
+from glances.compat import iterkeys
 from glances.plugins.glances_plugin import GlancesPlugin
 
 import psutil
@@ -48,7 +49,10 @@ snmp_oid = {'default': {'total': '1.3.6.1.4.1.2021.4.5.0',
 # Define the history items list
 # All items in this list will be historised if the --enable-history tag is set
 # 'color' define the graph color in #RGB format
-items_history_list = [{'name': 'percent', 'color': '#00FF00', 'y_unit': '%'}]
+items_history_list = [{'name': 'percent',
+                       'description': 'RAM memory usage',
+                       'color': '#00FF00',
+                       'y_unit': '%'}]
 
 
 class Plugin(GlancesPlugin):
@@ -60,7 +64,7 @@ class Plugin(GlancesPlugin):
 
     def __init__(self, args=None):
         """Init the plugin."""
-        GlancesPlugin.__init__(self, args=args, items_history_list=items_history_list)
+        super(Plugin, self).__init__(args=args, items_history_list=items_history_list)
 
         # We want to display the stat in the curse interface
         self.display_curse = True
@@ -72,6 +76,7 @@ class Plugin(GlancesPlugin):
         """Reset/init the stats."""
         self.stats = {}
 
+    @GlancesPlugin._check_decorator
     @GlancesPlugin._log_result_decorator
     def update(self):
         """Update RAM memory stats using the input method."""
@@ -94,7 +99,7 @@ class Plugin(GlancesPlugin):
             # inactive: (UNIX): memory that is marked as not used.
             # buffers: (Linux, BSD): cache for things like file system metadata.
             # cached: (Linux, BSD): cache for various things.
-            # wired: (BSD, OSX): memory that is marked to always stay in RAM. It is never moved to disk.
+            # wired: (BSD, macOS): memory that is marked to always stay in RAM. It is never moved to disk.
             # shared: (BSD): memory that may be simultaneously accessed by multiple processes.
             self.reset()
             for mem in ['total', 'available', 'percent', 'used', 'free',
@@ -139,7 +144,7 @@ class Plugin(GlancesPlugin):
                     self.reset()
                     return self.stats
 
-                for key in list(self.stats.keys()):
+                for key in iterkeys(self.stats):
                     if self.stats[key] != '':
                         self.stats[key] = float(self.stats[key]) * 1024
 
@@ -152,18 +157,12 @@ class Plugin(GlancesPlugin):
                 # percent: the percentage usage calculated as (total - available) / total * 100.
                 self.stats['percent'] = float((self.stats['total'] - self.stats['free']) / self.stats['total'] * 100)
 
-        # Update the history list
-        self.update_stats_history()
-
-        # Update the view
-        self.update_views()
-
         return self.stats
 
     def update_views(self):
         """Update stats views."""
         # Call the father's method
-        GlancesPlugin.update_views(self)
+        super(Plugin, self).update_views()
 
         # Add specifics informations
         # Alert and log
@@ -179,61 +178,61 @@ class Plugin(GlancesPlugin):
         ret = []
 
         # Only process if stats exist and plugin not disabled
-        if not self.stats or args.disable_mem:
+        if not self.stats or self.is_disable():
             return ret
 
         # Build the string message
         # Header
-        msg = '{0:5} '.format('MEM')
+        msg = '{:5} '.format('MEM')
         ret.append(self.curse_add_line(msg, "TITLE"))
         # Percent memory usage
-        msg = '{0:>7.1%}'.format(self.stats['percent'] / 100)
+        msg = '{:>7.1%}'.format(self.stats['percent'] / 100)
         ret.append(self.curse_add_line(msg))
         # Active memory usage
         if 'active' in self.stats:
-            msg = '  {0:9}'.format('active:')
+            msg = '  {:9}'.format('active:')
             ret.append(self.curse_add_line(msg, optional=self.get_views(key='active', option='optional')))
-            msg = '{0:>7}'.format(self.auto_unit(self.stats['active']))
+            msg = '{:>7}'.format(self.auto_unit(self.stats['active']))
             ret.append(self.curse_add_line(msg, optional=self.get_views(key='active', option='optional')))
         # New line
         ret.append(self.curse_new_line())
         # Total memory usage
-        msg = '{0:6}'.format('total:')
+        msg = '{:6}'.format('total:')
         ret.append(self.curse_add_line(msg))
-        msg = '{0:>7}'.format(self.auto_unit(self.stats['total']))
+        msg = '{:>7}'.format(self.auto_unit(self.stats['total']))
         ret.append(self.curse_add_line(msg))
         # Inactive memory usage
         if 'inactive' in self.stats:
-            msg = '  {0:9}'.format('inactive:')
+            msg = '  {:9}'.format('inactive:')
             ret.append(self.curse_add_line(msg, optional=self.get_views(key='inactive', option='optional')))
-            msg = '{0:>7}'.format(self.auto_unit(self.stats['inactive']))
+            msg = '{:>7}'.format(self.auto_unit(self.stats['inactive']))
             ret.append(self.curse_add_line(msg, optional=self.get_views(key='inactive', option='optional')))
         # New line
         ret.append(self.curse_new_line())
         # Used memory usage
-        msg = '{0:6}'.format('used:')
+        msg = '{:6}'.format('used:')
         ret.append(self.curse_add_line(msg))
-        msg = '{0:>7}'.format(self.auto_unit(self.stats['used']))
+        msg = '{:>7}'.format(self.auto_unit(self.stats['used']))
         ret.append(self.curse_add_line(
             msg, self.get_views(key='used', option='decoration')))
         # Buffers memory usage
         if 'buffers' in self.stats:
-            msg = '  {0:9}'.format('buffers:')
+            msg = '  {:9}'.format('buffers:')
             ret.append(self.curse_add_line(msg, optional=self.get_views(key='buffers', option='optional')))
-            msg = '{0:>7}'.format(self.auto_unit(self.stats['buffers']))
+            msg = '{:>7}'.format(self.auto_unit(self.stats['buffers']))
             ret.append(self.curse_add_line(msg, optional=self.get_views(key='buffers', option='optional')))
         # New line
         ret.append(self.curse_new_line())
         # Free memory usage
-        msg = '{0:6}'.format('free:')
+        msg = '{:6}'.format('free:')
         ret.append(self.curse_add_line(msg))
-        msg = '{0:>7}'.format(self.auto_unit(self.stats['free']))
+        msg = '{:>7}'.format(self.auto_unit(self.stats['free']))
         ret.append(self.curse_add_line(msg))
         # Cached memory usage
         if 'cached' in self.stats:
-            msg = '  {0:9}'.format('cached:')
+            msg = '  {:9}'.format('cached:')
             ret.append(self.curse_add_line(msg, optional=self.get_views(key='cached', option='optional')))
-            msg = '{0:>7}'.format(self.auto_unit(self.stats['cached']))
+            msg = '{:>7}'.format(self.auto_unit(self.stats['cached']))
             ret.append(self.curse_add_line(msg, optional=self.get_views(key='cached', option='optional')))
 
         return ret

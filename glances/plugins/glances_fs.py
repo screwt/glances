@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -59,7 +59,9 @@ snmp_oid['esxi'] = snmp_oid['windows']
 # Define the history items list
 # All items in this list will be historised if the --enable-history tag is set
 # 'color' define the graph color in #RGB format
-items_history_list = [{'name': 'percent', 'color': '#00FF00'}]
+items_history_list = [{'name': 'percent',
+                       'description': 'File system usage in percent',
+                       'color': '#00FF00'}]
 
 
 class Plugin(GlancesPlugin):
@@ -71,8 +73,7 @@ class Plugin(GlancesPlugin):
 
     def __init__(self, args=None):
         """Init the plugin."""
-        GlancesPlugin.__init__(
-            self, args=args, items_history_list=items_history_list)
+        super(Plugin, self).__init__(args=args, items_history_list=items_history_list)
 
         # We want to display the stat in the curse interface
         self.display_curse = True
@@ -88,6 +89,7 @@ class Plugin(GlancesPlugin):
         """Reset/init the stats."""
         self.stats = []
 
+    @GlancesPlugin._check_decorator
     @GlancesPlugin._log_result_decorator
     def update(self):
         """Update the FS stats using the input method."""
@@ -116,6 +118,9 @@ class Plugin(GlancesPlugin):
 
             # Loop over fs
             for fs in fs_stat:
+                # Do not take hidden file system into account
+                if self.is_hide(fs.mountpoint):
+                    continue
                 # Grab the disk usage
                 try:
                     fs_usage = psutil.disk_usage(fs.mountpoint)
@@ -175,18 +180,12 @@ class Plugin(GlancesPlugin):
                         'key': self.get_key()}
                     self.stats.append(fs_current)
 
-        # Update the history list
-        self.update_stats_history('mnt_point')
-
-        # Update the view
-        self.update_views()
-
         return self.stats
 
     def update_views(self):
         """Update stats views."""
         # Call the father's method
-        GlancesPlugin.update_views(self)
+        super(Plugin, self).update_views()
 
         # Add specifics informations
         # Alert
@@ -200,7 +199,7 @@ class Plugin(GlancesPlugin):
         ret = []
 
         # Only process if stats exist and display plugin enable...
-        if not self.stats or args.disable_fs:
+        if not self.stats or self.is_disable():
             return ret
 
         # Max size for the fsname name
@@ -212,17 +211,17 @@ class Plugin(GlancesPlugin):
 
         # Build the string message
         # Header
-        msg = '{0:{width}}'.format('FILE SYS', width=fsname_max_width)
+        msg = '{:{width}}'.format('FILE SYS', width=fsname_max_width)
         ret.append(self.curse_add_line(msg, "TITLE"))
         if args.fs_free_space:
-            msg = '{0:>7}'.format('Free')
+            msg = '{:>7}'.format('Free')
         else:
-            msg = '{0:>7}'.format('Used')
+            msg = '{:>7}'.format('Used')
         ret.append(self.curse_add_line(msg))
-        msg = '{0:>7}'.format('Total')
+        msg = '{:>7}'.format('Total')
         ret.append(self.curse_add_line(msg))
 
-        # Disk list (sorted by name)
+        # Filesystem list (sorted by name)
         for i in sorted(self.stats, key=operator.itemgetter(self.get_key())):
             # New line
             ret.append(self.curse_new_line())
@@ -230,23 +229,22 @@ class Plugin(GlancesPlugin):
                 mnt_point = i['mnt_point'][-fsname_max_width + 1:]
             elif len(i['mnt_point']) + len(i['device_name'].split('/')[-1]) <= fsname_max_width - 3:
                 # If possible concatenate mode info... Glances touch inside :)
-                mnt_point = i['mnt_point'] + \
-                    ' (' + i['device_name'].split('/')[-1] + ')'
+                mnt_point = i['mnt_point'] + ' (' + i['device_name'].split('/')[-1] + ')'
             elif len(i['mnt_point']) > fsname_max_width:
                 # Cut mount point name if it is too long
                 mnt_point = '_' + i['mnt_point'][-fsname_max_width + 1:]
             else:
                 mnt_point = i['mnt_point']
-            msg = '{0:{width}}'.format(mnt_point, width=fsname_max_width)
+            msg = '{:{width}}'.format(mnt_point, width=fsname_max_width)
             ret.append(self.curse_add_line(msg))
             if args.fs_free_space:
-                msg = '{0:>7}'.format(self.auto_unit(i['free']))
+                msg = '{:>7}'.format(self.auto_unit(i['free']))
             else:
-                msg = '{0:>7}'.format(self.auto_unit(i['used']))
+                msg = '{:>7}'.format(self.auto_unit(i['used']))
             ret.append(self.curse_add_line(msg, self.get_views(item=i[self.get_key()],
                                                                key='used',
                                                                option='decoration')))
-            msg = '{0:>7}'.format(self.auto_unit(i['size']))
+            msg = '{:>7}'.format(self.auto_unit(i['size']))
             ret.append(self.curse_add_line(msg))
 
         return ret

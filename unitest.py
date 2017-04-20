@@ -3,7 +3,7 @@
 #
 # Glances - An eye on your system
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -20,34 +20,30 @@
 
 """Glances unitary tests suite."""
 
-import sys
 import time
 import unittest
+
+from glances.main import GlancesMain
+from glances.stats import GlancesStats
+from glances import __version__
+from glances.globals import WINDOWS, LINUX
+from glances.outputs.glances_bars import Bar
 
 # Global variables
 # =================
 
 # Init Glances core
-from glances.core.glances_main import GlancesMain
 core = GlancesMain()
-if not core.is_standalone():
-    print('ERROR: Glances core should be ran in standalone mode')
-    sys.exit(1)
 
 # Init Glances stats
-from glances.core.glances_stats import GlancesStats
 stats = GlancesStats()
-
-from glances.core.glances_globals import is_windows, version
-from glances.outputs.glances_bars import Bar
 
 # Unitest class
 # ==============
-print('Unitary tests for Glances %s' % version)
+print('Unitary tests for Glances %s' % __version__)
 
 
 class TestGlances(unittest.TestCase):
-
     """Test Glances class."""
 
     def setUp(self):
@@ -76,13 +72,13 @@ class TestGlances(unittest.TestCase):
 
     def test_001_plugins(self):
         """Check mandatory plugins."""
-        plugins_to_check = ['system', 'cpu', 'load', 'mem', 'memswap', 'network', 'diskio', 'fs']
+        plugins_to_check = ['system', 'cpu', 'load', 'mem', 'memswap', 'network', 'diskio', 'fs', 'irq']
         print('INFO: [TEST_001] Check the mandatory plugins list: %s' % ', '.join(plugins_to_check))
         plugins_list = stats.getAllPlugins()
         for plugin in plugins_to_check:
             self.assertTrue(plugin in plugins_list)
 
-    def test_002_cpu(self):
+    def test_002_system(self):
         """Check SYSTEM plugin."""
         stats_to_check = ['hostname', 'os_name']
         print('INFO: [TEST_002] Check SYSTEM stats: %s' % ', '.join(stats_to_check))
@@ -105,7 +101,7 @@ class TestGlances(unittest.TestCase):
             self.assertLessEqual(stats_grab[stat], 100)
         print('INFO: CPU stats: %s' % stats_grab)
 
-    @unittest.skipIf(is_windows, "Load average not available on Windows")
+    @unittest.skipIf(WINDOWS, "Load average not available on Windows")
     def test_004_load(self):
         """Check LOAD plugin."""
         stats_to_check = ['cpucore', 'min1', 'min5', 'min15']
@@ -151,7 +147,7 @@ class TestGlances(unittest.TestCase):
 
     def test_008_diskio(self):
         """Check DISKIO plugin."""
-        print('INFO: [TEST_008] Check DiskIO stats')
+        print('INFO: [TEST_008] Check DISKIO stats')
         stats_grab = stats.get_plugin('diskio').get_raw()
         self.assertTrue(type(stats_grab) is list, msg='DiskIO stats is not a list')
         print('INFO: diskio stats: %s' % stats_grab)
@@ -178,18 +174,124 @@ class TestGlances(unittest.TestCase):
         # Check if number of processes in the list equal counter
         # self.assertEqual(total, len(stats_grab))
 
-    def test_011_output_bars_must_be_between_0_and_100_percent(self):
-        """Test quick look plugin."""
-        print('INFO: [TEST_011] Test progress bar')
+    def test_011_folders(self):
+        """Check File System plugin."""
+        # stats_to_check = [ ]
+        print('INFO: [TEST_011] Check FOLDER stats')
+        stats_grab = stats.get_plugin('folders').get_raw()
+        self.assertTrue(type(stats_grab) is list, msg='Folders stats is not a list')
+        print('INFO: Folders stats: %s' % stats_grab)
+
+    def test_012_ip(self):
+        """Check IP plugin."""
+        print('INFO: [TEST_012] Check IP stats')
+        stats_grab = stats.get_plugin('ip').get_raw()
+        self.assertTrue(type(stats_grab) is dict, msg='IP stats is not a dict')
+        print('INFO: IP stats: %s' % stats_grab)
+
+    @unittest.skipIf(not LINUX, "IRQs available only on Linux")
+    def test_013_irq(self):
+        """Check IRQ plugin."""
+        print('INFO: [TEST_013] Check IRQ stats')
+        stats_grab = stats.get_plugin('irq').get_raw()
+        self.assertTrue(type(stats_grab) is list, msg='IRQ stats is not a list')
+        print('INFO: IRQ stats: %s' % stats_grab)
+
+    @unittest.skipIf(not LINUX, "GPU available only on Linux")
+    def test_013_gpu(self):
+        """Check GPU plugin."""
+        print('INFO: [TEST_014] Check GPU stats')
+        stats_grab = stats.get_plugin('gpu').get_raw()
+        self.assertTrue(type(stats_grab) is list, msg='GPU stats is not a list')
+        print('INFO: GPU stats: %s' % stats_grab)
+
+    def test_095_methods(self):
+        """Test mandatories methods"""
+        print('INFO: [TEST_095] Mandatories methods')
+        mandatories_methods = ['reset', 'update']
+        plugins_list = stats.getAllPlugins()
+        for plugin in plugins_list:
+            for method in mandatories_methods:
+                self.assertTrue(hasattr(stats.get_plugin(plugin), method),
+                                msg='{} has no method {}()'.format(plugin, method))
+
+    def test_096_views(self):
+        """Test get_views method"""
+        print('INFO: [TEST_096] Test views')
+        plugins_list = stats.getAllPlugins()
+        for plugin in plugins_list:
+            stats_grab = stats.get_plugin(plugin).get_raw()
+            views_grab = stats.get_plugin(plugin).get_views()
+            self.assertTrue(type(views_grab) is dict,
+                            msg='{} view is not a dict'.format(plugin))
+
+    def test_097_attribute(self):
+        """Test GlancesAttribute classe"""
+        print('INFO: [TEST_097] Test attribute')
+        # GlancesAttribute
+        from glances.attribute import GlancesAttribute
+        a = GlancesAttribute('a', description='ad', history_max_size=3)
+        self.assertEqual(a.name, 'a')
+        self.assertEqual(a.description, 'ad')
+        a.description = 'adn'
+        self.assertEqual(a.description, 'adn')
+        a.value = 1
+        a.value = 2
+        self.assertEqual(len(a.history), 2)
+        a.value = 3
+        self.assertEqual(len(a.history), 3)
+        a.value = 4
+        # Check if history_max_size=3 is OK
+        self.assertEqual(len(a.history), 3)
+        self.assertEqual(a.history_size(), 3)
+        self.assertEqual(a.history_len(), 3)
+        self.assertEqual(a.history_value()[1], 4)
+        self.assertEqual(a.history_mean(nb=3), 4.5)
+
+    def test_098_history(self):
+        """Test GlancesHistory classe"""
+        print('INFO: [TEST_098] Test history')
+        # GlancesHistory
+        from glances.history import GlancesHistory
+        h = GlancesHistory()
+        h.add('a', 1)
+        h.add('a', 2)
+        h.add('a', 3)
+        h.add('b', 10)
+        h.add('b', 20)
+        h.add('b', 30)
+        self.assertEqual(len(h.get()), 2)
+        self.assertEqual(len(h.get()['a']), 3)
+        h.reset()
+        self.assertEqual(len(h.get()), 2)
+        self.assertEqual(len(h.get()['a']), 0)
+
+    def test_099_output_bars_must_be_between_0_and_100_percent(self):
+        """Test quick look plugin.
+
+        > bar.min_value
+        0
+        > bar.max_value
+        100
+        > bar.percent = -1
+        > bar.percent
+        0
+        > bar.percent = 101
+        > bar.percent
+        100
+        """
+        print('INFO: [TEST_099] Test progress bar')
         bar = Bar(size=1)
-        with self.assertRaises(AssertionError):
-            bar.percent = -1
-            bar.percent = 101
+        bar.percent = -1
+        self.assertLessEqual(bar.percent, bar.min_value)
+        bar.percent = 101
+        self.assertGreaterEqual(bar.percent, bar.max_value)
 
-        # 0 - 100 is an inclusive range, so these should not error.
-        bar.percent = 0
-        bar.percent = 100
-
+    def test_999_the_end(self):
+        """Free all the stats"""
+        print('INFO: [TEST_999] Free the stats')
+        stats.end()
+        self.assertTrue(True)
 
 if __name__ == '__main__':
     unittest.main()

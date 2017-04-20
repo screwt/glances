@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -19,6 +19,7 @@
 
 """Swap memory plugin."""
 
+from glances.compat import iterkeys
 from glances.plugins.glances_plugin import GlancesPlugin
 
 import psutil
@@ -36,7 +37,10 @@ snmp_oid = {'default': {'total': '1.3.6.1.4.1.2021.4.3.0',
 # Define the history items list
 # All items in this list will be historised if the --enable-history tag is set
 # 'color' define the graph color in #RGB format
-items_history_list = [{'name': 'percent', 'color': '#00FF00', 'y_unit': '%'}]
+items_history_list = [{'name': 'percent',
+                       'description': 'Swap memory usage',
+                       'color': '#00FF00',
+                       'y_unit': '%'}]
 
 
 class Plugin(GlancesPlugin):
@@ -48,8 +52,7 @@ class Plugin(GlancesPlugin):
 
     def __init__(self, args=None):
         """Init the plugin."""
-        GlancesPlugin.__init__(
-            self, args=args, items_history_list=items_history_list)
+        super(Plugin, self).__init__(args=args, items_history_list=items_history_list)
 
         # We want to display the stat in the curse interface
         self.display_curse = True
@@ -61,6 +64,7 @@ class Plugin(GlancesPlugin):
         """Reset/init the stats."""
         self.stats = {}
 
+    @GlancesPlugin._check_decorator
     @GlancesPlugin._log_result_decorator
     def update(self):
         """Update swap memory stats using the input method."""
@@ -116,7 +120,7 @@ class Plugin(GlancesPlugin):
                     self.reset()
                     return self.stats
 
-                for key in list(self.stats.keys()):
+                for key in iterkeys(self.stats):
                     if self.stats[key] != '':
                         self.stats[key] = float(self.stats[key]) * 1024
 
@@ -128,18 +132,12 @@ class Plugin(GlancesPlugin):
                 self.stats['percent'] = float(
                     (self.stats['total'] - self.stats['free']) / self.stats['total'] * 100)
 
-        # Update the history list
-        self.update_stats_history()
-
-        # Update the view
-        self.update_views()
-
         return self.stats
 
     def update_views(self):
         """Update stats views."""
         # Call the father's method
-        GlancesPlugin.update_views(self)
+        super(Plugin, self).update_views()
 
         # Add specifics informations
         # Alert and log
@@ -151,37 +149,37 @@ class Plugin(GlancesPlugin):
         ret = []
 
         # Only process if stats exist and plugin not disabled
-        if not self.stats or args.disable_swap:
+        if not self.stats or self.is_disable():
             return ret
 
         # Build the string message
         # Header
-        msg = '{0:7} '.format('SWAP')
+        msg = '{:7} '.format('SWAP')
         ret.append(self.curse_add_line(msg, "TITLE"))
         # Percent memory usage
-        msg = '{0:>6.1%}'.format(self.stats['percent'] / 100)
+        msg = '{:>6.1%}'.format(self.stats['percent'] / 100)
         ret.append(self.curse_add_line(msg))
         # New line
         ret.append(self.curse_new_line())
         # Total memory usage
-        msg = '{0:8}'.format('total:')
+        msg = '{:8}'.format('total:')
         ret.append(self.curse_add_line(msg))
-        msg = '{0:>6}'.format(self.auto_unit(self.stats['total']))
+        msg = '{:>6}'.format(self.auto_unit(self.stats['total']))
         ret.append(self.curse_add_line(msg))
         # New line
         ret.append(self.curse_new_line())
         # Used memory usage
-        msg = '{0:8}'.format('used:')
+        msg = '{:8}'.format('used:')
         ret.append(self.curse_add_line(msg))
-        msg = '{0:>6}'.format(self.auto_unit(self.stats['used']))
+        msg = '{:>6}'.format(self.auto_unit(self.stats['used']))
         ret.append(self.curse_add_line(
             msg, self.get_views(key='used', option='decoration')))
         # New line
         ret.append(self.curse_new_line())
         # Free memory usage
-        msg = '{0:8}'.format('free:')
+        msg = '{:8}'.format('free:')
         ret.append(self.curse_add_line(msg))
-        msg = '{0:>6}'.format(self.auto_unit(self.stats['free']))
+        msg = '{:>6}'.format(self.auto_unit(self.stats['free']))
         ret.append(self.curse_add_line(msg))
 
         return ret

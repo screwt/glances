@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -45,6 +45,9 @@ class Bar(object):
         self.__size = size
         # Bar current percent
         self.__percent = 0
+        # Min and max value
+        self.min_value = 0
+        self.max_value = 100
         # Char used for the decoration
         self.__pre_char = pre_char
         self.__post_char = post_char
@@ -69,9 +72,10 @@ class Bar(object):
 
     @percent.setter
     def percent(self, value):
-        if value < 0 or value > 100:
-            raise AssertionError('The percent must be between 0 and 100.')
-
+        if value <= self.min_value:
+            value = self.min_value
+        if value >= self.max_value:
+            value = self.max_value
         self.__percent = value
 
     @property
@@ -91,5 +95,5 @@ class Bar(object):
             whole += 1
         ret += self.__empty_char * int(self.size - whole)
         if self.__with_text:
-            ret = '{0}{1:>5}%'.format(ret, self.percent)
+            ret = '{}{:5.1f}%'.format(ret, self.percent)
         return ret

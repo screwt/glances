@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -19,30 +19,21 @@
 
 """Sensors plugin."""
 
-# Sensors library (optional; Linux-only)
-# Py3Sensors: https://bitbucket.org/gleb_zhulik/py3sensors
-try:
-    import sensors
-except ImportError:
-    pass
+import psutil
 
-# Import system libs
-import locale
-
-# Import Glances lib
-from glances.core.glances_globals import is_py3
-from glances.core.glances_logging import logger
+from glances.logger import logger
+from glances.compat import iteritems
 from glances.plugins.glances_batpercent import Plugin as BatPercentPlugin
 from glances.plugins.glances_hddtemp import Plugin as HddTempPlugin
 from glances.plugins.glances_plugin import GlancesPlugin
 
-if is_py3:
-    SENSOR_TEMP_UNIT = '°C'
-else:
-    # ensure UTF-8 characters are in a charset the terminal can understand
-    SENSOR_TEMP_UNIT = u'°C '.encode(locale.getpreferredencoding(), 'ignore')
+SENSOR_TEMP_UNIT = 'C'
+SENSOR_FAN_UNIT = 'rpm'
 
-SENSOR_FAN_UNIT = 'RPM'
+
+def to_fahrenheit(celsius):
+    """Convert Celsius to Fahrenheit."""
+    return celsius * 1.8 + 32
 
 
 class Plugin(GlancesPlugin):
@@ -56,7 +47,7 @@ class Plugin(GlancesPlugin):
 
     def __init__(self, args=None):
         """Init the plugin."""
-        GlancesPlugin.__init__(self, args=args)
+        super(Plugin, self).__init__(args=args)
 
         # Init the sensor class
         self.glancesgrabsensors = GlancesGrabSensors()
@@ -83,6 +74,7 @@ class Plugin(GlancesPlugin):
         """Reset/init the stats."""
         self.stats = []
 
+    @GlancesPlugin._check_decorator
     @GlancesPlugin._log_result_decorator
     def update(self):
         """Update sensors stats using the input method."""
@@ -136,9 +128,6 @@ class Plugin(GlancesPlugin):
 
             pass
 
-        # Update the view
-        self.update_views()
-
         return self.stats
 
     def __set_type(self, stats, sensor_type):
@@ -161,7 +150,7 @@ class Plugin(GlancesPlugin):
     def update_views(self):
         """Update stats views."""
         # Call the father's method
-        GlancesPlugin.update_views(self)
+        super(Plugin, self).update_views()
 
         # Add specifics informations
         # Alert
@@ -184,50 +173,86 @@ class Plugin(GlancesPlugin):
 
         # Build the string message
         # Header
-        msg = '{0:18}'.format('SENSORS')
+        msg = '{:18}'.format('SENSORS')
         ret.append(self.curse_add_line(msg, "TITLE"))
 
         for i in self.stats:
-            if i['value']:
-                # New line
-                ret.append(self.curse_new_line())
-                # Alias for the lable name ?
-                label = self.has_alias(i['label'].lower())
-                if label is None:
-                    label = i['label']
-                try:
-                    msg = "{0:12} {1:3}".format(label[:11], i['unit'])
-                except (KeyError, UnicodeEncodeError):
-                    msg = "{0:16}".format(label[:15])
-                if args.fahrenheit:
-                    msg = msg.replace('°C', '°F')
-                ret.append(self.curse_add_line(msg))
-                if args.fahrenheit:
-                    # Convert Celsius to Fahrenheit
-                    # T(°F) = T(°C) × 1.8 + 32
-                    msg = '{0:>7}'.format(i['value'] * 1.8 + 32)
-                else:
-                    msg = '{0:>7}'.format(i['value'])
+            # Do not display anything if no battery are detected
+            if i['type'] == 'battery' and i['value'] == []:
+                continue
+            # New line
+            ret.append(self.curse_new_line())
+            # Alias for the lable name ?
+            label = self.has_alias(i['label'].lower())
+            if label is None:
+                label = i['label']
+            if i['type'] != 'fan_speed':
+                msg = '{:15}'.format(label[:15])
+            else:
+                msg = '{:13}'.format(label[:13])
+            ret.append(self.curse_add_line(msg))
+            if i['value'] in (b'ERR', b'SLP', b'UNK', b'NOS'):
+                msg = '{:>8}'.format(i['value'])
                 ret.append(self.curse_add_line(
                     msg, self.get_views(item=i[self.get_key()],
                                         key='value',
                                         option='decoration')))
+            else:
+                if (args.fahrenheit and i['type'] != 'battery' and
+                        i['type'] != 'fan_speed'):
+                    value = to_fahrenheit(i['value'])
+                    unit = 'F'
+                else:
+                    value = i['value']
+                    unit = i['unit']
+                try:
+                    msg = '{:>7.0f}{}'.format(value, unit)
+                    ret.append(self.curse_add_line(
+                        msg, self.get_views(item=i[self.get_key()],
+                                            key='value',
+                                            option='decoration')))
+                except (TypeError, ValueError):
+                    pass
 
         return ret
 
 
 class GlancesGrabSensors(object):
 
-    """Get sensors stats using the py3sensors library."""
+    """Get sensors stats."""
 
     def __init__(self):
         """Init sensors stats."""
+        # Temperatures
+        self.init_temp = False
+        self.stemps = {}
         try:
-            sensors.init()
-        except Exception:
-            self.initok = False
+            # psutil>=5.1.0 is required
+            self.stemps = psutil.sensors_temperatures()
+        except AttributeError:
+            logger.warning("PsUtil 5.1.0 or higher is needed to grab temperatures sensors")
+        except OSError as e:
+            # FreeBSD: If oid 'hw.acpi.battery' not present, Glances wont start #1055
+            logger.error("Can not grab temperatures sensors ({})".format(e))
         else:
-            self.initok = True
+            self.init_temp = True
+
+        # Fans
+        self.init_fan = False
+        self.sfans = {}
+        try:
+            # psutil>=5.2.0 is required
+            self.sfans = psutil.sensors_fans()
+        except AttributeError:
+            logger.warning("PsUtil 5.2.0 or higher is needed to grab fans sensors")
+        except OSError as e:
+            logger.error("Can not grab fans sensors ({})".format(e))
+        else:
+            self.init_fan = True
+
+        # !!! Disable Fan: High CPU consumption is PSUtil 5.2.0
+        # Delete the following line when corrected
+        self.init_fan = False
 
         # Init the stats
         self.reset()
@@ -241,22 +266,48 @@ class GlancesGrabSensors(object):
         # Reset the list
         self.reset()
 
-        if self.initok:
-            for chip in sensors.iter_detected_chips():
-                for feature in chip:
-                    sensors_current = {}
-                    if feature.name.startswith(b'temp'):
-                        # Temperature sensor
-                        sensors_current['unit'] = SENSOR_TEMP_UNIT
-                    elif feature.name.startswith(b'fan'):
-                        # Fan speed sensor
-                        sensors_current['unit'] = SENSOR_FAN_UNIT
-                    if sensors_current:
-                        sensors_current['label'] = feature.label
-                        sensors_current['value'] = int(feature.get_value())
-                        self.sensors_list.append(sensors_current)
+        if not self.init_temp:
+            return self.sensors_list
+
+        # Temperatures sensors
+        self.sensors_list.extend(self.build_sensors_list(SENSOR_TEMP_UNIT))
+
+        # Fans sensors
+        self.sensors_list.extend(self.build_sensors_list(SENSOR_FAN_UNIT))
 
         return self.sensors_list
+
+    def build_sensors_list(self, type):
+        """Build the sensors list depending of the type.
+
+        type: SENSOR_TEMP_UNIT or SENSOR_FAN_UNIT
+
+        output: a list"""
+        ret = []
+        if type == SENSOR_TEMP_UNIT and self.init_temp:
+            input_list = self.stemps
+            self.stemps = psutil.sensors_temperatures()
+        elif type == SENSOR_FAN_UNIT and self.init_fan:
+            input_list = self.sfans
+            self.sfans = psutil.sensors_fans()
+        else:
+            return ret
+        for chipname, chip in iteritems(input_list):
+            i = 1
+            for feature in chip:
+                sensors_current = {}
+                # Sensor name
+                if feature.label == '':
+                    sensors_current['label'] = chipname + ' ' + str(i)
+                else:
+                    sensors_current['label'] = feature.label
+                # Fan speed and unit
+                sensors_current['value'] = int(feature.current)
+                sensors_current['unit'] = type
+                # Add sensor to the list
+                ret.append(sensors_current)
+                i += 1
+        return ret
 
     def get(self, sensor_type='temperature_core'):
         """Get sensors list."""
@@ -270,8 +321,3 @@ class GlancesGrabSensors(object):
             logger.debug("Unknown sensor type %s" % sensor_type)
             ret = []
         return ret
-
-    def quit(self):
-        """End of connection."""
-        if self.initok:
-            sensors.cleanup()

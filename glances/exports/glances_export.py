@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -23,11 +23,8 @@ I am your father...
 ...for all Glances exports IF.
 """
 
-# Import system libs
-# None...
-
-# Import Glances lib
-from glances.core.glances_logging import logger
+from glances.compat import NoOptionError, NoSectionError, iteritems, iterkeys
+from glances.logger import logger
 
 
 class GlancesExport(object):
@@ -38,7 +35,7 @@ class GlancesExport(object):
         """Init the export class."""
         # Export name (= module name without glances_)
         self.export_name = self.__class__.__module__[len('glances_'):]
-        logger.debug("Init export interface %s" % self.export_name)
+        logger.debug("Init export module %s" % self.export_name)
 
         # Init the config & args
         self.config = config
@@ -47,6 +44,10 @@ class GlancesExport(object):
         # By default export is disable
         # Had to be set to True in the __init__ class of child
         self.export_enable = False
+
+        # Mandatory for (most of) the export module
+        self.host = None
+        self.port = None
 
     def exit(self):
         """Close the export module."""
@@ -67,30 +68,75 @@ class GlancesExport(object):
                 'system',
                 'uptime',
                 'sensors',
-                'docker']
+                'docker',
+                'uptime']
+
+    def load_conf(self, section, mandatories=['host', 'port'], options=None):
+        """Load the export <section> configuration in the Glances configuration file.
+
+        :param section: name of the export section to load
+        :param mandatories: a list of mandatories parameters to load
+        :param options: a list of optionnals parameters to load
+
+        :returns: Boolean -- True if section is found
+        """
+        options = options or []
+
+        if self.config is None:
+            return False
+
+        # By default read the mandatory host:port items
+        try:
+            for opt in mandatories:
+                setattr(self, opt, self.config.get_value(section, opt))
+        except NoSectionError:
+            logger.critical("No {} configuration found".format(section))
+            return False
+        except NoOptionError as e:
+            logger.critical("Error in the {} configuration ({})".format(section, e))
+            return False
+
+        # Load options
+        for opt in options:
+            try:
+                setattr(self, opt, self.config.get_value(section, opt))
+            except NoOptionError:
+                pass
+
+        logger.debug("Load {} from the Glances configuration file".format(section))
+        logger.debug("{} parameters: {}".format(section, {opt: getattr(self, opt) for opt in mandatories + options}))
+
+        return True
 
     def get_item_key(self, item):
         """Return the value of the item 'key'."""
         try:
             ret = item[item['key']]
         except KeyError:
-            logger.error("No 'key' available in {0}".format(item))
+            logger.error("No 'key' available in {}".format(item))
         if isinstance(ret, list):
             return ret[0]
         else:
             return ret
 
-    def parse_tags(self):
-        """ Parses some tags into a dict"""
-        if self.tags:
+    def parse_tags(self, tags):
+        """Parse tags into a dict.
+
+        tags: a comma separated list of 'key:value' pairs.
+            Example: foo:bar,spam:eggs
+        dtags: a dict of tags.
+            Example: {'foo': 'bar', 'spam': 'eggs'}
+        """
+        dtags = {}
+        if tags:
             try:
-                self.tags = dict([x.split(':') for x in self.tags.split(',')])
+                dtags = dict([x.split(':') for x in tags.split(',')])
             except ValueError:
-                # one of the keyvalue pairs was missing
-                logger.info('invalid tags passed: %s', self.tags)
-                self.tags = {}
-        else:
-            self.tags = {}
+                # one of the 'key:value' pairs was missing
+                logger.info('Invalid tags passed: %s', tags)
+                dtags = {}
+
+        return dtags
 
     def update(self, stats):
         """Update stats to a server.
@@ -104,22 +150,19 @@ class GlancesExport(object):
             return False
 
         # Get all the stats & limits
-        all_stats = stats.getAllExports()
-        all_limits = stats.getAllLimits()
-        # Get the plugins list
-        plugins = stats.getAllPlugins()
+        all_stats = stats.getAllExportsAsDict(plugin_list=self.plugins_to_export())
+        all_limits = stats.getAllLimitsAsDict(plugin_list=self.plugins_to_export())
 
-        # Loop over available plugins
-        for i, plugin in enumerate(plugins):
-            if plugin in self.plugins_to_export():
-                if isinstance(all_stats[i], dict):
-                    all_stats[i].update(all_limits[i])
-                elif isinstance(all_stats[i], list):
-                    all_stats[i] += all_limits[i]
-                else:
-                    continue
-                export_names, export_values = self.__build_export(all_stats[i])
-                self.export(plugin, export_names, export_values)
+        # Loop over plugins to export
+        for plugin in self.plugins_to_export():
+            if isinstance(all_stats[plugin], dict):
+                all_stats[plugin].update(all_limits[plugin])
+            elif isinstance(all_stats[plugin], list):
+                all_stats[plugin] += all_limits[plugin]
+            else:
+                continue
+            export_names, export_values = self.__build_export(all_stats[plugin])
+            self.export(plugin, export_names, export_values)
 
         return True
 
@@ -131,16 +174,12 @@ class GlancesExport(object):
         if isinstance(stats, dict):
             # Stats is a dict
             # Is there a key ?
-            if 'key' in list(stats.keys()):
-                pre_key = '{0}.'.format(stats[stats['key']])
+            if 'key' in iterkeys(stats) and stats['key'] in iterkeys(stats):
+                pre_key = '{}.'.format(stats[stats['key']])
             else:
                 pre_key = ''
             # Walk through the dict
-            try:
-                iteritems = stats.iteritems()
-            except AttributeError:
-                iteritems = stats.items()
-            for key, value in iteritems:
+            for key, value in iteritems(stats):
                 if isinstance(value, list):
                     try:
                         value = value[0]

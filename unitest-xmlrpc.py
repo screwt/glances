@@ -3,7 +3,7 @@
 #
 # Glances - An eye on your system
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -25,13 +25,9 @@ import shlex
 import subprocess
 import time
 import unittest
-try:
-    from xmlrpc.client import ServerProxy
-except ImportError:
-    # Python 2
-    from xmlrpclib import ServerProxy
 
-from glances.core.glances_globals import version
+from glances import __version__
+from glances.compat import ServerProxy
 
 SERVER_PORT = 61234
 URL = "http://localhost:%s" % SERVER_PORT
@@ -42,11 +38,10 @@ client = ServerProxy(URL)
 
 # Unitest class
 # ==============
-print('XML-RPC API unitary tests for Glances %s' % version)
+print('XML-RPC API unitary tests for Glances %s' % __version__)
 
 
 class TestGlances(unittest.TestCase):
-
     """Test Glances class."""
 
     def setUp(self):
@@ -131,10 +126,13 @@ class TestGlances(unittest.TestCase):
 
     def test_007_disk(self):
         """DISK."""
-        method = "getFs() and getDiskIO()"
+        method = "getFs(), getFolders() and getDiskIO()"
         print('INFO: [TEST_007] Method: %s' % method)
 
         req = json.loads(client.getFs())
+        self.assertIsInstance(req, list)
+
+        req = json.loads(client.getFolders())
         self.assertIsInstance(req, list)
 
         req = json.loads(client.getDiskIO())
@@ -176,6 +174,13 @@ class TestGlances(unittest.TestCase):
         req = json.loads(client.getAllViews())
         self.assertIsInstance(req, dict)
         self.assertIsInstance(req['cpu'], dict)
+
+    def test_012_irq(self):
+        """IRQS"""
+        method = "getIrqs()"
+        print('INFO: [TEST_012] Method: %s' % method)
+        req = json.loads(client.getIrq())
+        self.assertIsInstance(req, list)
 
     def test_999_stop_server(self):
         """Stop the Glances Web Server."""

@@ -2,6 +2,277 @@
 Glances Version 2
 ==============================================================================
 
+Version 2.9.1
+=============
+
+Bugs corrected:
+
+    * Glances PerCPU issues with Curses UI on Android (issue #1071)
+    * Remove extra } in format string (issue #1073)
+    
+Version 2.9.0
+=============
+
+Enhancements and new features:
+
+    * Add a Prometheus export module (issue #930)
+    * Add a Kafka export module (issue #858)
+    * Port in the -c URI (-c hostname:port) (issue #996)
+
+Bugs corrected:
+
+    * On Windows --export-statsd terminates immediately and does not export (issue #1067)
+    * Glances v2.8.7 issues with Curses UI on Android (issue #1053)
+    * Fails to start, OSError in sensors_temperatures (issue #1057)
+    * Crashs after long time running the glances --browser (issue #1059)
+    * Sensor values don't refresh since psutil backend (issue #1061)
+    * glances-version.db Permission denied (issue #1066)
+
+Version 2.8.8
+=============
+
+Bugs corrected:
+
+    * Drop requests to check for outdated Glances version
+    *  Glances cannot load "Powersupply" (issue #1051)
+
+Version 2.8.7
+=============
+
+Bugs corrected:
+
+    * Windows OS - Global name standalone not defined again (issue #1030)
+
+Version 2.8.6
+=============
+
+Bugs corrected:
+
+    * Windows OS - Global name standalone not defined (issue #1030)
+
+Version 2.8.5
+=============
+
+Bugs corrected:
+
+    * Cloud plugin error: Name 'requests' is not defined (issue #1047)
+
+Version 2.8.4
+=============
+
+Bugs corrected:
+
+    * Correct issue on Travis CI test
+
+Version 2.8.3
+=============
+
+Enhancements and new features:
+
+    * Use new sensors-related APIs of Psutil 5.1.0 (issue #1018)
+    * Add a "Cloud" plugin to grab stats inside the AWS EC2 API (issue #1029)
+
+Bugs corrected:
+
+    * Unable to launch Glances on Windows (issue #1021)
+    * Glances --export-influxdb starts Webserver (issue #1038)
+    * Cut mount point name if it is too long (issue #1045)
+    * TypeError: string indices must be integers in per cpu (issue #1027)
+    * Glances crash on RPi 1 running ArchLinuxARM (issue #1046)
+
+Version 2.8.2
+=============
+
+Bugs corrected:
+
+    * InfluxDB export in 2.8.1 is broken (issue #1026)
+
+Version 2.8.1
+=============
+
+Enhancements and new features:
+
+    * Enable docker plugin on Windows (issue #1009) - Thanks to @fraoustin
+
+Bugs corrected:
+
+    * Glances export issue with CPU and SENSORS (issue #1024)
+    * Can't export data to a CSV file in Client/Server mode (issue #1023)
+    * Autodiscover error while binding on IPv6 addresses (issue #1002)
+    * GPU plugin is display when hitting '4' or '5' shortkeys (issue #1012)
+    * Interrupts and usb_fiq (issue #1007)
+    * Docker image does not work in web server mode! (issue #1017)
+    * IRQ plugin is not display anymore (issue #1013)
+    * Autodiscover error while binding on IPv6 addresses (issue #1002)
+
+Version 2.8
+===========
+
+Changes:
+
+    * The curses interface on Windows is no more. The web-based interface is now
+      the default. (issue #946)
+    * The name of the log file now contains the name of the current user logged in,
+      i.e., 'glances-USERNAME.log'.
+    * IRQ plugin off by default. '--disable-irq' option replaced by '--enable-irq'.
+
+Enhancements and new features:
+
+    * GPU monitoring (limited to NVidia) (issue #170)
+    * WebUI CPU consumption optimization (issue #836)
+    * Not compatible with the new Docker API 2.0 (Docker 1.13) (issue #1000)
+    * Add ZeroMQ exporter (issue #939)
+    * Add CouchDB exporter (issue #928)
+    * Add hotspot Wifi informations (issue #937)
+    * Add default interface speed and automatic rate thresolds (issue #718)
+    * Highlight max stats in the processes list (issue #878)
+    * Docker alerts and actions (issue #875)
+    * Glances API returns the processes PPID (issue #926)
+    * Configure server cached time from the command line --cached-time (issue #901)
+    * Make the log logger configurable (issue #900)
+    * System uptime in export (issue #890)
+    * Refactor the --disable-* options (issue #948)
+    * PID column too small if kernel.pid_max is > 99999 (issue #959)
+
+Bugs corrected:
+
+    * Glances RAID plugin Traceback (issue #927)
+    * Default AMP crashes when 'command' given (issue #933)
+    * Default AMP ignores `enable` setting (issue #932)
+    * /proc/interrupts not found in an OpenVZ container (issue #947)
+
+Version 2.7.1
+=============
+
+Bugs corrected:
+
+    * AMP plugin crashs on start with Python 3 (issue #917)
+    * Ports plugin crashs on start with Python 3 (issue #918)
+
+Version 2.7
+===========
+
+Backward-incompatible changes:
+
+    * Drop support for Python 2.6 (issue #300)
+
+Deprecated:
+
+    * Monitoring process list module is replaced by AMP (see issue #780)
+    * Use --export-graph instead of --enable-history (issue #696)
+    * Use --path-graph instead of --path-history (issue #696)
+
+Enhancements and new features:
+
+    * Add Application Monitoring Process plugin (issue #780)
+    * Add a new "Ports scanner" plugin (issue #734)
+    * Add a new IRQ monitoring plugin (issue #911)
+    * Improve IP plugin to display public IP address (issue #646)
+    * CPU additionnal stats monitoring: Context switch, Interrupts... (issue #810)
+    * Filter processes by others stats (username) (issue #748)
+    * [Folders] Differentiate permission issue and non-existence of a directory (issue #828)
+    * [Web UI] Add cpu name in quicklook plugin (issue #825)
+    * Allow theme to be set in configuration file (issue #862)
+    * Display a warning message when Glances is outdated (issue #865)
+    * Refactor stats history and export to graph. History available through API (issue #696)
+    * Add Cassandra/Scylla export plugin (issue #857)
+    * Huge pull request by Nicolas Hart to optimize the WebUI (issue #906)
+    * Improve documentation: http://glances.readthedocs.io (issue #872)
+
+Bugs corrected:
+
+    * Crash on launch when viewing temperature of laptop HDD in sleep mode (issue #824)
+    * [Web UI] Fix folders plugin never displayed (issue #829)
+    * Correct issue IP plugin: VPN with no internet access (issue #842)
+    * Idle process is back on FreeBSD and Windows (issue #844)
+    * On Windows, Glances try to display unexisting Load stats (issue #871)
+    * Check CPU info (issue #881)
+    * Unicode error on processlist on Windows server 2008 (french) (issue #886)
+    * PermissionError/OSError when starting glances (issue #885)
+    * Zeroconf problem with zeroconf_type = "_%s._tcp." % __appname__ (issue #888)
+    * Zeroconf problem with zeroconf service name (issue #889)
+    * [WebUI] Glances will not get past loading screen - Windows OS (issue #815)
+    * Improper bytes/unicode in glances_hddtemp.py (issue #887)
+    * Top 3 processes are back in the alert summary
+
+Code quality follow up: from 5.93 to 6.24 (source: https://scrutinizer-ci.com/g/nicolargo/glances)
+
+Version 2.6.2
+=============
+
+Bugs corrected:
+
+    * Crash with Docker 1.11 (issue #848)
+
+Version 2.6.1
+=============
+
+Enhancements and new features:
+
+    * Add a connector to Riemann (issue #822 by Greogo Nagy)
+
+Bugs corrected:
+
+    * Browsing for servers which are in the [serverlist] is broken (issue #819)
+    * [WebUI] Glances will not get past loading screen (issue #815) opened 9 days ago
+    * Python error after upgrading from 2.5.1 to 2.6 bug (issue #813)
+
+Version 2.6
+===========
+
+Deprecations:
+
+    * Add deprecation warning for Python 2.6.
+      Python 2.6 support will be dropped in future releases.
+      Please switch to at least Python 2.7 or 3.3+ as soon as possible.
+      See http://www.snarky.ca/stop-using-python-2-6 for more information.
+
+Enhancements and new features:
+
+    * Add a connector to ElasticSearch (welcome to Kibana dashboard) (issue #311)
+    * New folders' monitoring plugins (issue #721)
+    * Use wildcard (regexp) to the hide configuration option for network, diskio and fs sections (issue #799 )
+    * Command line arguments are now take into account in the WebUI (#789 by  @notFloran)
+    * Change username for server and web server authentication (issue #693)
+    * Add an option to disable top menu (issue #766)
+    * Add IOps in the DiskIO plugin (issue #763)
+    * Add hide configuration key for FS Plugin (issue #736)
+    * Add process summary min/max stats (issue #703)
+    * Add timestamp to the CSV export module (issue #708)
+    * Add a shortcut 'E' to delete process filter (issue #699)
+    * By default, hide disk I/O ram1-** (issue #714)
+    * When Glances is starting the notifications should be delayed (issue #732)
+    * Add option (--disable-bg) to disable ANSI background colours (issue #738 by okdana)
+    * [WebUI] add "pointer" cursor for sortable columns (issue #704 by @notFloran)
+    * [WebUI] Make web page title configurable (issue #724)
+    * Do not show interface in down state (issue #765)
+    * InfluxDB > 0.9.3 needs float and not int for numerical value (issue#749 and issue#750 by nicolargo)
+
+Bugs corrected:
+
+    * Can't read sensors on a Thinkpad (issue #711)
+    * InfluxDB/OpenTSDB: tag parsing broken (issue #713)
+    * Grafana Dashboard outdated for InfluxDB 0.9.x (issue #648)
+    * '--tree' breaks process filter on Debian 8 (issue #768)
+    * Fix highlighting of process when it contains whitespaces (issue #546 by Alessio Sergi)
+    * Fix RAID support in Python 3 (issue #793 by Alessio Sergi)
+    * Use dict view objects to avoid issue (issue #758 by Alessio Sergi)
+    * System exit if Cpu not supported by the Cpuinfo lib (issue #754 by nicolargo)
+    * KeyError: 'cpucore' when exporting data to InfluxDB (issue #729) by nicolargo)
+
+Others:
+    * A new Glances docker container to monitor your Docker infrastructure is available here (issue #728): https://hub.docker.com/r/nicolargo/glances/
+    * Documentation is now generated automatically thanks to Sphinx and the Alessio Sergi patch (https://glances.readthedocs.io/en/latest/)
+
+Contributors summary:
+    * Nicolas Hennion: 112 commits
+    * Alessio Sergi: 55 commits
+    * Floran Brutel: 19 commits
+    * Nicolas Hart: 8 commits
+    * @desbma: 4 commits
+    * @dana: 2 commits
+    * Damien Martin, Raju Kadam, @georgewhewell: 1 commit
+
 Version 2.5.1
 =============
 

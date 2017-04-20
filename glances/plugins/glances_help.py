@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -23,8 +23,7 @@ Help plugin.
 Just a stupid plugin to display the help screen.
 """
 
-# Import Glances libs
-from glances.core.glances_globals import appname, psutil_version, version
+from glances import __version__, psutil_version
 from glances.plugins.glances_plugin import GlancesPlugin
 
 
@@ -34,7 +33,7 @@ class Plugin(GlancesPlugin):
 
     def __init__(self, args=None, config=None):
         """Init the plugin."""
-        GlancesPlugin.__init__(self, args=args)
+        super(Plugin, self).__init__(args=args)
 
         # Set the config instance
         self.config = config
@@ -46,16 +45,20 @@ class Plugin(GlancesPlugin):
         self.view_data = {}
         self.generate_view_data()
 
+    def reset(self):
+        """No stats. It is just a plugin to display the help."""
+        pass
+
     def update(self):
         """No stats. It is just a plugin to display the help."""
         pass
 
     def generate_view_data(self):
-        self.view_data['version'] = '{0} {1}'.format(appname.title(), version)
-        self.view_data['psutil_version'] = ' with PSutil {0}'.format(psutil_version)
+        self.view_data['version'] = '{} {}'.format('Glances', __version__)
+        self.view_data['psutil_version'] = ' with PSutil {}'.format(psutil_version)
 
         try:
-            self.view_data['configuration_file'] = 'Configuration file: {0}'.format(self.config.loaded_config_file)
+            self.view_data['configuration_file'] = 'Configuration file: {}'.format(self.config.loaded_config_file)
         except AttributeError:
             pass
 
@@ -75,6 +78,7 @@ class Plugin(GlancesPlugin):
         self.view_data['sort_cpu_times'] = msg_col.format('t', 'Sort processes by TIME')
         self.view_data['show_hide_help'] = msg_col2.format('h', 'Show/hide this help screen')
         self.view_data['show_hide_diskio'] = msg_col.format('d', 'Show/hide disk I/O stats')
+        self.view_data['show_hide_irq'] = msg_col2.format('Q', 'Show/hide IRQ stats')
         self.view_data['view_network_io_combination'] = msg_col2.format('T', 'View network I/O as combination')
         self.view_data['show_hide_filesystem'] = msg_col.format('f', 'Show/hide filesystem stats')
         self.view_data['view_cumulative_network'] = msg_col2.format('U', 'View cumulative network I/O')
@@ -92,6 +96,10 @@ class Plugin(GlancesPlugin):
         self.view_data['enable_disable_docker'] = msg_col2.format('D', 'Enable/disable Docker stats')
         self.view_data['enable_disable_quick_look'] = msg_col.format('3', 'Enable/disable quick look plugin')
         self.view_data['show_hide_ip'] = msg_col2.format('I', 'Show/hide IP module')
+        self.view_data['diskio_iops'] = msg_col2.format('B', 'Count/rate for Disk I/O')
+        self.view_data['show_hide_top_menu'] = msg_col2.format('5', 'Show/hide top menu (QL, CPU, MEM, SWAP and LOAD)')
+        self.view_data['enable_disable_gpu'] = msg_col.format('G', 'Enable/disable gpu plugin')
+        self.view_data['enable_disable_mean_gpu'] = msg_col2.format('6', 'Enable/disable mean gpu')
         self.view_data['edit_pattern_filter'] = 'ENTER: Edit the process filter pattern'
 
     def get_view_data(self, args=None):
@@ -157,13 +165,19 @@ class Plugin(GlancesPlugin):
         ret.append(self.curse_add_line(self.view_data['show_hide_help']))
         ret.append(self.curse_new_line())
         ret.append(self.curse_add_line(self.view_data['enable_disable_quick_look']))
-        ret.append(self.curse_add_line(self.view_data['quit']))
+        ret.append(self.curse_add_line(self.view_data['diskio_iops']))
         ret.append(self.curse_new_line())
         ret.append(self.curse_add_line(self.view_data['enable_disable_top_extends_stats']))
+        ret.append(self.curse_add_line(self.view_data['show_hide_top_menu']))
         ret.append(self.curse_new_line())
         ret.append(self.curse_add_line(self.view_data['enable_disable_short_processname']))
+        ret.append(self.curse_add_line(self.view_data['show_hide_irq']))
+        ret.append(self.curse_new_line())
+        ret.append(self.curse_add_line(self.view_data['enable_disable_gpu']))
+        ret.append(self.curse_add_line(self.view_data['enable_disable_mean_gpu']))
         ret.append(self.curse_new_line())
         ret.append(self.curse_add_line(self.view_data['enable_disable_irix']))
+        ret.append(self.curse_add_line(self.view_data['quit']))
         ret.append(self.curse_new_line())
 
         ret.append(self.curse_new_line())

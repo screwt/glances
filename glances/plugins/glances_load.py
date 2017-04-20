@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -19,10 +19,9 @@
 
 """Load plugin."""
 
-# Import system libs
 import os
 
-# Import Glances libs
+from glances.compat import iteritems
 from glances.plugins.glances_core import Plugin as CorePlugin
 from glances.plugins.glances_plugin import GlancesPlugin
 
@@ -37,9 +36,15 @@ snmp_oid = {'min1': '1.3.6.1.4.1.2021.10.1.3.1',
 # Define the history items list
 # All items in this list will be historised if the --enable-history tag is set
 # 'color' define the graph color in #RGB format
-items_history_list = [{'name': 'min1', 'color': '#0000FF'},
-                      {'name': 'min5', 'color': '#0000AA'},
-                      {'name': 'min15', 'color': '#000044'}]
+items_history_list = [{'name': 'min1',
+                       'description': '1 minute load',
+                       'color': '#0000FF'},
+                      {'name': 'min5',
+                       'description': '5 minutes load',
+                       'color': '#0000AA'},
+                      {'name': 'min15',
+                       'description': '15 minutes load',
+                       'color': '#000044'}]
 
 
 class Plugin(GlancesPlugin):
@@ -51,8 +56,7 @@ class Plugin(GlancesPlugin):
 
     def __init__(self, args=None):
         """Init the plugin."""
-        GlancesPlugin.__init__(
-            self, args=args, items_history_list=items_history_list)
+        super(Plugin, self).__init__(args=args, items_history_list=items_history_list)
 
         # We want to display the stat in the curse interface
         self.display_curse = True
@@ -64,12 +68,13 @@ class Plugin(GlancesPlugin):
         try:
             self.nb_log_core = CorePlugin(args=self.args).update()["log"]
         except Exception:
-            self.nb_log_core = 0
+            self.nb_log_core = 1
 
     def reset(self):
         """Reset/init the stats."""
         self.stats = {}
 
+    @GlancesPlugin._check_decorator
     @GlancesPlugin._log_result_decorator
     def update(self):
         """Update load stats."""
@@ -99,27 +104,17 @@ class Plugin(GlancesPlugin):
 
             # Python 3 return a dict like:
             # {'min1': "b'0.08'", 'min5': "b'0.12'", 'min15': "b'0.15'"}
-            try:
-                iteritems = self.stats.iteritems()
-            except AttributeError:
-                iteritems = self.stats.items()
-            for k, v in iteritems:
+            for k, v in iteritems(self.stats):
                 self.stats[k] = float(v)
 
             self.stats['cpucore'] = self.nb_log_core
-
-        # Update the history list
-        self.update_stats_history()
-
-        # Update the view
-        self.update_views()
 
         return self.stats
 
     def update_views(self):
         """Update stats views."""
         # Call the father's method
-        GlancesPlugin.update_views(self)
+        super(Plugin, self).update_views()
 
         # Add specifics informations
         try:
@@ -136,39 +131,39 @@ class Plugin(GlancesPlugin):
         # Init the return message
         ret = []
 
-        # Only process if stats exist and plugin not disabled
-        if not self.stats or args.disable_load:
+        # Only process if stats exist, not empty (issue #871) and plugin not disabled
+        if not self.stats or (self.stats == {}) or self.is_disable():
             return ret
 
         # Build the string message
         # Header
-        msg = '{0:8}'.format('LOAD')
+        msg = '{:8}'.format('LOAD')
         ret.append(self.curse_add_line(msg, "TITLE"))
         # Core number
-        if self.stats['cpucore'] > 0:
-            msg = '{0}-core'.format(int(self.stats['cpucore']))
+        if 'cpucore' in self.stats and self.stats['cpucore'] > 0:
+            msg = '{}-core'.format(int(self.stats['cpucore']))
             ret.append(self.curse_add_line(msg))
         # New line
         ret.append(self.curse_new_line())
         # 1min load
-        msg = '{0:8}'.format('1 min:')
+        msg = '{:8}'.format('1 min:')
         ret.append(self.curse_add_line(msg))
-        msg = '{0:>6.2f}'.format(self.stats['min1'])
+        msg = '{:>6.2f}'.format(self.stats['min1'])
         ret.append(self.curse_add_line(msg))
         # New line
         ret.append(self.curse_new_line())
         # 5min load
-        msg = '{0:8}'.format('5 min:')
+        msg = '{:8}'.format('5 min:')
         ret.append(self.curse_add_line(msg))
-        msg = '{0:>6.2f}'.format(self.stats['min5'])
+        msg = '{:>6.2f}'.format(self.stats['min5'])
         ret.append(self.curse_add_line(
             msg, self.get_views(key='min5', option='decoration')))
         # New line
         ret.append(self.curse_new_line())
         # 15min load
-        msg = '{0:8}'.format('15 min:')
+        msg = '{:8}'.format('15 min:')
         ret.append(self.curse_add_line(msg))
-        msg = '{0:>6.2f}'.format(self.stats['min15'])
+        msg = '{:>6.2f}'.format(self.stats['min15'])
         ret.append(self.curse_add_line(
             msg, self.get_views(key='min15', option='decoration')))
 

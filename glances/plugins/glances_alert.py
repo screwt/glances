@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -19,11 +19,9 @@
 
 """Alert plugin."""
 
-# Import system lib
 from datetime import datetime
 
-# Import Glances libs
-from glances.core.glances_logs import glances_logs
+from glances.logs import glances_logs
 from glances.plugins.glances_plugin import GlancesPlugin
 
 
@@ -36,7 +34,7 @@ class Plugin(GlancesPlugin):
 
     def __init__(self, args=None):
         """Init the plugin."""
-        GlancesPlugin.__init__(self, args=args)
+        super(Plugin, self).__init__(args=args)
 
         # We want to display the stat in the curse interface
         self.display_curse = True
@@ -62,7 +60,7 @@ class Plugin(GlancesPlugin):
         ret = []
 
         # Only process if display plugin enable...
-        if args.disable_log:
+        if not self.stats and self.is_disable():
             return ret
 
         # Build the string message
@@ -76,7 +74,7 @@ class Plugin(GlancesPlugin):
             ret.append(self.curse_add_line(msg, "TITLE"))
             logs_len = glances_logs.len()
             if logs_len > 1:
-                msg = ' (lasts {0} entries)'.format(logs_len)
+                msg = ' (last {} entries)'.format(logs_len)
             else:
                 msg = ' (one entry)'
             ret.append(self.curse_add_line(msg, "TITLE"))
@@ -90,8 +88,8 @@ class Plugin(GlancesPlugin):
                 # Duration
                 if alert[1] > 0:
                     # If finished display duration
-                    msg = ' ({0})'.format(datetime.fromtimestamp(alert[1]) -
-                                          datetime.fromtimestamp(alert[0]))
+                    msg = ' ({})'.format(datetime.fromtimestamp(alert[1]) -
+                                         datetime.fromtimestamp(alert[0]))
                 else:
                     msg = ' (ongoing)'
                 ret.append(self.curse_add_line(msg))
@@ -99,26 +97,23 @@ class Plugin(GlancesPlugin):
                 # Infos
                 if alert[1] > 0:
                     # If finished do not display status
-                    msg = '{0} on {1}'.format(alert[2], alert[3])
+                    msg = '{} on {}'.format(alert[2], alert[3])
                     ret.append(self.curse_add_line(msg))
                 else:
                     msg = str(alert[3])
                     ret.append(self.curse_add_line(msg, decoration=alert[2]))
                 # Min / Mean / Max
                 if self.approx_equal(alert[6], alert[4], tolerance=0.1):
-                    msg = ' ({0:.1f})'.format(alert[5])
+                    msg = ' ({:.1f})'.format(alert[5])
                 else:
-                    msg = ' (Min:{0:.1f} Mean:{1:.1f} Max:{2:.1f})'.format(
+                    msg = ' (Min:{:.1f} Mean:{:.1f} Max:{:.1f})'.format(
                         alert[6], alert[5], alert[4])
                 ret.append(self.curse_add_line(msg))
-
-                # else:
-                #     msg = ' Running...'
-                #     ret.append(self.curse_add_line(msg))
-
-                # !!! Debug only
-                # msg = ' | {0}'.format(alert)
-                # ret.append(self.curse_add_line(msg))
+                # Top processes
+                top_process = ', '.join([p['name'] for p in alert[9]])
+                if top_process != '':
+                    msg = ': {}'.format(top_process)
+                    ret.append(self.curse_add_line(msg))
 
         return ret
 

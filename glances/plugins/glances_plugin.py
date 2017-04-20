@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -23,16 +23,15 @@ I am your father...
 ...for all Glances plugins.
 """
 
-# Import system libs
+import re
 import json
-from datetime import datetime
 from operator import itemgetter
 
-# Import Glances lib
-from glances.core.glances_actions import GlancesActions
-from glances.core.glances_globals import is_py3
-from glances.core.glances_logging import logger
-from glances.core.glances_logs import glances_logs
+from glances.compat import iterkeys, itervalues, listkeys, map
+from glances.actions import GlancesActions
+from glances.history import GlancesHistory
+from glances.logger import logger
+from glances.logs import glances_logs
 
 
 class GlancesPlugin(object):
@@ -66,14 +65,14 @@ class GlancesPlugin(object):
         self._limits = dict()
 
         # Init the actions
-        self.actions = GlancesActions()
+        self.actions = GlancesActions(args=args)
 
         # Init the views
         self.views = dict()
 
     def exit(self):
         """Method to be called when Glances exit"""
-        logger.debug("Stop the {0} plugin".format(self.plugin_name))
+        logger.debug("Stop the {} plugin".format(self.plugin_name))
 
     def __repr__(self):
         """Return the raw stats."""
@@ -87,57 +86,134 @@ class GlancesPlugin(object):
         """Return the key of the list."""
         return None
 
-    def add_item_history(self, key, value):
-        """Add an new item (key, value) to the current history."""
+    def is_enable(self):
+        """Return true if plugin is enabled"""
         try:
-            self.stats_history[key].append(value)
-        except KeyError:
-            self.stats_history[key] = [value]
+            d = getattr(self.args, 'disable_' + self.plugin_name)
+        except AttributeError:
+            return True
+        else:
+            return d is False
+
+    def is_disable(self):
+        """Return true if plugin is disabled"""
+        return not self.is_enable()
+
+    def _json_dumps(self, d):
+        """Return the object 'd' in a JSON format
+        Manage the issue #815 for Windows OS"""
+        try:
+            return json.dumps(d)
+        except UnicodeDecodeError:
+            return json.dumps(d, ensure_ascii=False)
+
+    def _history_enable(self):
+        return self.args is not None and not self.args.disable_history and self.get_items_history_list() is not None
 
     def init_stats_history(self):
-        """Init the stats history (dict of list)."""
-        ret = None
-        if self.args is not None and self.args.enable_history and self.get_items_history_list() is not None:
-            init_list = [i['name'] for i in self.get_items_history_list()]
-            logger.debug("Stats history activated for plugin {0} (items: {0})".format(
-                self.plugin_name, init_list))
-            ret = {}
-        return ret
+        """Init the stats history (dict of GlancesAttribute)."""
+        if self._history_enable():
+            init_list = [a['name'] for a in self.get_items_history_list()]
+            logger.debug("Stats history activated for plugin {} (items: {})".format(self.plugin_name, init_list))
+        return GlancesHistory()
 
     def reset_stats_history(self):
-        """Reset the stats history (dict of list)."""
-        if self.args is not None and self.args.enable_history and self.get_items_history_list() is not None:
-            reset_list = [i['name'] for i in self.get_items_history_list()]
-            logger.debug("Reset history for plugin {0} (items: {0})".format(
-                self.plugin_name, reset_list))
-            self.stats_history = {}
+        """Reset the stats history (dict of GlancesAttribute)."""
+        if self._history_enable():
+            reset_list = [a['name'] for a in self.get_items_history_list()]
+            logger.debug("Reset history for plugin {} (items: {})".format(self.plugin_name, reset_list))
+            self.stats_history.reset()
 
-    def update_stats_history(self, item_name=''):
+    def update_stats_history(self):
         """Update stats history."""
-        if (self.stats and self.args is not None and
-                self.args.enable_history and
-                self.get_items_history_list() is not None):
-            self.add_item_history('date', datetime.now())
+        # If the plugin data is a dict, the dict's key should be used
+        if self.get_key() is None:
+            item_name = ''
+        else:
+            item_name = self.get_key()
+        # Build the history
+        if self.stats and self._history_enable():
             for i in self.get_items_history_list():
                 if isinstance(self.stats, list):
                     # Stats is a list of data
                     # Iter throught it (for exemple, iter throught network
                     # interface)
                     for l in self.stats:
-                        self.add_item_history(
-                            l[item_name] + '_' + i['name'], l[i['name']])
+                        self.stats_history.add(
+                            l[item_name] + '_' + i['name'],
+                            l[i['name']],
+                            description=i['description'],
+                            history_max_size=self._limits['history_size'])
                 else:
                     # Stats is not a list
                     # Add the item to the history directly
-                    self.add_item_history(i['name'], self.stats[i['name']])
-
-    def get_stats_history(self):
-        """Return the stats history."""
-        return self.stats_history
+                    self.stats_history.add(i['name'],
+                                           self.stats[i['name']],
+                                           description=i['description'],
+                                           history_max_size=self._limits['history_size'])
 
     def get_items_history_list(self):
         """Return the items history list."""
         return self.items_history_list
+
+    def get_raw_history(self, item=None):
+        """Return
+        - the stats history (dict of list) if item is None
+        - the stats history for the given item (list) instead
+        - None if item did not exist in the history"""
+        s = self.stats_history.get()
+        if item is None:
+            return s
+        else:
+            if item in s:
+                return s[item]
+            else:
+                return None
+
+    def get_json_history(self, item=None, nb=0):
+        """Return:
+        - the stats history (dict of list) if item is None
+        - the stats history for the given item (list) instead
+        - None if item did not exist in the history
+        Limit to lasts nb items (all if nb=0)"""
+        s = self.stats_history.get_json(nb=nb)
+        if item is None:
+            return s
+        else:
+            if item in s:
+                return s[item]
+            else:
+                return None
+
+    def get_export_history(self, item=None):
+        """Return the stats history object to export.
+        See get_raw_history for a full description"""
+        return self.get_raw_history(item=item)
+
+    def get_stats_history(self, item=None, nb=0):
+        """Return the stats history as a JSON object (dict or None).
+        Limit to lasts nb items (all if nb=0)"""
+        s = self.get_json_history(nb=nb)
+
+        if item is None:
+            return self._json_dumps(s)
+
+        if isinstance(s, dict):
+            try:
+                return self._json_dumps({item: s[item]})
+            except KeyError as e:
+                logger.error("Cannot get item history {} ({})".format(item, e))
+                return None
+        elif isinstance(s, list):
+            try:
+                # Source:
+                # http://stackoverflow.com/questions/4573875/python-get-index-of-dictionary-item-in-list
+                return self._json_dumps({item: map(itemgetter(item), s)})
+            except (KeyError, ValueError) as e:
+                logger.error("Cannot get item history {} ({})".format(item, e))
+                return None
+        else:
+            return None
 
     @property
     def input_method(self):
@@ -175,7 +251,7 @@ class GlancesPlugin(object):
         """
         snmp_oid = snmp_oid or {}
 
-        from glances.core.glances_snmp import GlancesSNMPClient
+        from glances.snmp import GlancesSNMPClient
 
         # Init the SNMP request
         clientsnmp = GlancesSNMPClient(host=self.args.client,
@@ -187,15 +263,15 @@ class GlancesPlugin(object):
         ret = {}
         if bulk:
             # Bulk request
-            snmpresult = clientsnmp.getbulk_by_oid(0, 10, *snmp_oid.values())
+            snmpresult = clientsnmp.getbulk_by_oid(0, 10, itervalues(*snmp_oid))
 
             if len(snmp_oid) == 1:
                 # Bulk command for only one OID
                 # Note: key is the item indexed but the OID result
                 for item in snmpresult:
-                    if item.keys()[0].startswith(snmp_oid.values()[0]):
-                        ret[snmp_oid.keys()[0] + item.keys()
-                            [0].split(snmp_oid.values()[0])[1]] = item.values()[0]
+                    if iterkeys(item)[0].startswith(itervalues(snmp_oid)[0]):
+                        ret[iterkeys(snmp_oid)[0] + iterkeys(item)
+                            [0].split(itervalues(snmp_oid)[0])[1]] = itervalues(item)[0]
             else:
                 # Build the internal dict with the SNMP result
                 # Note: key is the first item in the snmp_oid
@@ -203,7 +279,7 @@ class GlancesPlugin(object):
                 for item in snmpresult:
                     item_stats = {}
                     item_key = None
-                    for key in list(snmp_oid.keys()):
+                    for key in iterkeys(snmp_oid):
                         oid = snmp_oid[key] + '.' + str(index)
                         if oid in item:
                             if item_key is None:
@@ -215,10 +291,10 @@ class GlancesPlugin(object):
                     index += 1
         else:
             # Simple get request
-            snmpresult = clientsnmp.get_by_oid(*snmp_oid.values())
+            snmpresult = clientsnmp.get_by_oid(itervalues(*snmp_oid))
 
             # Build the internal dict with the SNMP result
-            for key in list(snmp_oid.keys()):
+            for key in iterkeys(snmp_oid):
                 ret[key] = snmpresult[snmp_oid[key]]
 
         return ret
@@ -233,7 +309,7 @@ class GlancesPlugin(object):
 
     def get_stats(self):
         """Return the stats object in JSON format."""
-        return json.dumps(self.stats)
+        return self._json_dumps(self.stats)
 
     def get_stats_item(self, item):
         """Return the stats object for a specific item in JSON format.
@@ -242,17 +318,17 @@ class GlancesPlugin(object):
         """
         if isinstance(self.stats, dict):
             try:
-                return json.dumps({item: self.stats[item]})
+                return self._json_dumps({item: self.stats[item]})
             except KeyError as e:
-                logger.error("Cannot get item {0} ({1})".format(item, e))
+                logger.error("Cannot get item {} ({})".format(item, e))
                 return None
         elif isinstance(self.stats, list):
             try:
                 # Source:
                 # http://stackoverflow.com/questions/4573875/python-get-index-of-dictionary-item-in-list
-                return json.dumps({item: map(itemgetter(item), self.stats)})
+                return self._json_dumps({item: map(itemgetter(item), self.stats)})
             except (KeyError, ValueError) as e:
-                logger.error("Cannot get item {0} ({1})".format(item, e))
+                logger.error("Cannot get item {} ({})".format(item, e))
                 return None
         else:
             return None
@@ -268,10 +344,10 @@ class GlancesPlugin(object):
             if value.isdigit():
                 value = int(value)
             try:
-                return json.dumps({value: [i for i in self.stats if i[item] == value]})
+                return self._json_dumps({value: [i for i in self.stats if i[item] == value]})
             except (KeyError, ValueError) as e:
                 logger.error(
-                    "Cannot get item({0})=value({1}) ({2})".format(item, value, e))
+                    "Cannot get item({})=value({}) ({})".format(item, value, e))
                 return None
 
     def update_views(self):
@@ -293,7 +369,7 @@ class GlancesPlugin(object):
             # Stats are stored in a list of dict (ex: NETWORK, FS...)
             for i in self.get_raw():
                 ret[i[self.get_key()]] = {}
-                for key in i.keys():
+                for key in listkeys(i):
                     value = {'decoration': 'DEFAULT',
                              'optional': False,
                              'additional': False,
@@ -301,7 +377,7 @@ class GlancesPlugin(object):
                     ret[i[self.get_key()]][key] = value
         elif isinstance(self.get_raw(), dict) and self.get_raw() is not None:
             # Stats are stored in a dict (ex: CPU, LOAD...)
-            for key in self.get_raw().keys():
+            for key in listkeys(self.get_raw()):
                 value = {'decoration': 'DEFAULT',
                          'optional': False,
                          'additional': False,
@@ -336,12 +412,27 @@ class GlancesPlugin(object):
             if option is None:
                 return item_views[key]
             else:
-                return item_views[key][option]
+                if option in item_views[key]:
+                    return item_views[key][option]
+                else:
+                    return 'DEFAULT'
 
     def load_limits(self, config):
         """Load limits from the configuration file, if it exists."""
-        if (hasattr(config, 'has_section') and
-                config.has_section(self.plugin_name)):
+
+        # By default set the history length to 3 points per second during one day
+        self._limits['history_size'] = 28800
+
+        if not hasattr(config, 'has_section'):
+            return False
+
+        # Read the global section
+        if config.has_section('global'):
+            self._limits['history_size'] = config.get_float_value('global', 'history_size', default=28800)
+            logger.debug("Load configuration key: {} = {}".format('history_size', self._limits['history_size']))
+
+        # Read the plugin specific section
+        if config.has_section(self.plugin_name):
             for level, _ in config.items(self.plugin_name):
                 # Read limits
                 limit = '_'.join([self.plugin_name, level])
@@ -349,7 +440,9 @@ class GlancesPlugin(object):
                     self._limits[limit] = config.get_float_value(self.plugin_name, level)
                 except ValueError:
                     self._limits[limit] = config.get_value(self.plugin_name, level).split(",")
-                logger.debug("Load limit: {0} = {1}".format(limit, self._limits[limit]))
+                logger.debug("Load limit: {} = {}".format(limit, self._limits[limit]))
+
+        return True
 
     @property
     def limits(self):
@@ -361,7 +454,22 @@ class GlancesPlugin(object):
         """Set the limits to input_limits."""
         self._limits = input_limits
 
-    def get_alert(self, current=0, minimum=0, maximum=100, header="", log=False):
+    def get_stats_action(self):
+        """Return stats for the action
+        By default return all the stats.
+        Can be overwrite by plugins implementation.
+        For example, Docker will return self.stats['containers']"""
+        return self.stats
+
+    def get_alert(self,
+                  current=0,
+                  minimum=0,
+                  maximum=100,
+                  highlight_zero=True,
+                  is_max=False,
+                  header="",
+                  action_key=None,
+                  log=False):
         """Return the alert status relative to a current value.
 
         Use this function for minor stats.
@@ -371,13 +479,22 @@ class GlancesPlugin(object):
         If current > WARNING of max then alert = WARNING
         If current > CRITICAL of max then alert = CRITICAL
 
+        If highlight=True than 0.0 is highlighted
+
         If defined 'header' is added between the plugin name and the status.
         Only useful for stats with several alert status.
 
+        If defined, 'action_key' define the key for the actions.
+        By default, the action_key is equal to the header.
+
         If log=True than add log if necessary
         elif log=False than do not log
-        elig log=None than apply the config given in the conf file
+        elif log=None than apply the config given in the conf file
         """
+        # Manage 0 (0.0) value if highlight_zero is not True
+        if not highlight_zero and current == 0:
+            return 'DEFAULT'
+
         # Compute the %
         try:
             value = (current * 100) / maximum
@@ -393,13 +510,14 @@ class GlancesPlugin(object):
             stat_name = self.plugin_name + '_' + header
 
         # Manage limits
-        ret = 'OK'
+        # If is_max is set then display the value in MAX
+        ret = 'MAX' if is_max else 'OK'
         try:
-            if value > self.__get_limit('critical', stat_name=stat_name):
+            if value >= self.get_limit('critical', stat_name=stat_name):
                 ret = 'CRITICAL'
-            elif value > self.__get_limit('warning', stat_name=stat_name):
+            elif value >= self.get_limit('warning', stat_name=stat_name):
                 ret = 'WARNING'
-            elif value > self.__get_limit('careful', stat_name=stat_name):
+            elif value >= self.get_limit('careful', stat_name=stat_name):
                 ret = 'CAREFUL'
             elif current < minimum:
                 ret = 'CAREFUL'
@@ -408,46 +526,69 @@ class GlancesPlugin(object):
 
         # Manage log
         log_str = ""
-        if self.__get_limit_log(stat_name=stat_name, default_action=log):
+        if self.get_limit_log(stat_name=stat_name, default_action=log):
             # Add _LOG to the return string
             # So stats will be highlited with a specific color
             log_str = "_LOG"
             # Add the log to the list
-            glances_logs.add(ret, stat_name.upper(), value, [])
+            glances_logs.add(ret, stat_name.upper(), value)
 
         # Manage action
-        # Here is a command line for the current trigger ?
-        try:
-            command = self.__get_limit_action(ret.lower(), stat_name=stat_name)
-        except KeyError:
-            # Reset the trigger
-            self.actions.set(stat_name, ret.lower())
-        else:
-            # A command line is available for the current alert, run it
-            # Build the {{mustache}} dictionnary
-            if isinstance(self.stats, list):
-                # If the stats are stored in a list of dict (fs plugin for exemple)
-                # Return the dict for the current header
-                mustache_dict = {}
-                for item in self.stats:
-                    if item[self.get_key()] == header:
-                        mustache_dict = item
-                        break
-            else:
-                # Use the stats dict
-                mustache_dict = self.stats
-            # Run the action
-            self.actions.run(
-                stat_name, ret.lower(), command, mustache_dict=mustache_dict)
+        self.manage_action(stat_name, ret.lower(), header, action_key)
 
         # Default is ok
         return ret + log_str
 
-    def get_alert_log(self, current=0, minimum=0, maximum=100, header=""):
-        """Get the alert log."""
-        return self.get_alert(current, minimum, maximum, header, log=True)
+    def manage_action(self,
+                      stat_name,
+                      trigger,
+                      header,
+                      action_key):
+        """Manage the action for the current stat"""
+        # Here is a command line for the current trigger ?
+        try:
+            command = self.get_limit_action(trigger, stat_name=stat_name)
+        except KeyError:
+            # Reset the trigger
+            self.actions.set(stat_name, trigger)
+        else:
+            # Define the action key for the stats dict
+            # If not define, then it sets to header
+            if action_key is None:
+                action_key = header
 
-    def __get_limit(self, criticity, stat_name=""):
+            # A command line is available for the current alert
+            # 1) Build the {{mustache}} dictionnary
+            if isinstance(self.get_stats_action(), list):
+                # If the stats are stored in a list of dict (fs plugin for exemple)
+                # Return the dict for the current header
+                mustache_dict = {}
+                for item in self.get_stats_action():
+                    if item[self.get_key()] == action_key:
+                        mustache_dict = item
+                        break
+            else:
+                # Use the stats dict
+                mustache_dict = self.get_stats_action()
+            # 2) Run the action
+            self.actions.run(
+                stat_name, trigger, command, mustache_dict=mustache_dict)
+
+    def get_alert_log(self,
+                      current=0,
+                      minimum=0,
+                      maximum=100,
+                      header="",
+                      action_key=None):
+        """Get the alert log."""
+        return self.get_alert(current=current,
+                              minimum=minimum,
+                              maximum=maximum,
+                              header=header,
+                              action_key=action_key,
+                              log=True)
+
+    def get_limit(self, criticity, stat_name=""):
         """Return the limit value for the alert."""
         # Get the limit for stat + header
         # Exemple: network_wlan0_rx_careful
@@ -458,10 +599,12 @@ class GlancesPlugin(object):
             # Exemple: network_careful
             limit = self._limits[self.plugin_name + '_' + criticity]
 
+        # logger.debug("{} {} value is {}".format(stat_name, criticity, limit))
+
         # Return the limit
         return limit
 
-    def __get_limit_action(self, criticity, stat_name=""):
+    def get_limit_action(self, criticity, stat_name=""):
         """Return the action for the alert."""
         # Get the action for stat + header
         # Exemple: network_wlan0_rx_careful_action
@@ -475,7 +618,7 @@ class GlancesPlugin(object):
         # Return the action list
         return ret
 
-    def __get_limit_log(self, stat_name, default_action=False):
+    def get_limit_log(self, stat_name, default_action=False):
         """Return the log tag for the alert."""
         # Get the log tag for stat + header
         # Exemple: network_wlan0_rx_log
@@ -512,8 +655,15 @@ class GlancesPlugin(object):
             return []
 
     def is_hide(self, value, header=""):
-        """Return True if the value is in the hide configuration list."""
-        return value in self.get_conf_value('hide', header=header)
+        """
+        Return True if the value is in the hide configuration list.
+        The hide configuration list is defined in the glances.conf file.
+        It is a comma separed list of regexp.
+        Example for diskio:
+        hide=sda2,sda5,loop.*
+        """
+        # TODO: possible optimisation: create a re.compile list
+        return not all(j is None for j in [re.match(i, value) for i in self.get_conf_value('hide', header=header)])
 
     def has_alias(self, header):
         """Return the alias name for the relative header or None if nonexist."""
@@ -644,26 +794,31 @@ class GlancesPlugin(object):
                         decimal_precision = min(1, decimal_precision)
                 elif symbol in 'K':
                     decimal_precision = 0
-                return '{0:.{decimal}f}{symbol}'.format(
+                return '{:.{decimal}f}{symbol}'.format(
                     value, decimal=decimal_precision, symbol=symbol)
-        return '{0!s}'.format(number)
+        return '{!s}'.format(number)
+
+    def _check_decorator(fct):
+        """Check if the plugin is enabled."""
+        def wrapper(self, *args, **kw):
+            if self.is_enable():
+                ret = fct(self, *args, **kw)
+            else:
+                ret = self.stats
+            return ret
+        return wrapper
 
     def _log_result_decorator(fct):
         """Log (DEBUG) the result of the function fct."""
         def wrapper(*args, **kw):
             ret = fct(*args, **kw)
-            if is_py3:
-                logger.debug("%s %s %s return %s" % (
-                    args[0].__class__.__name__,
-                    args[0].__class__.__module__[len('glances_'):],
-                    fct.__name__, ret))
-            else:
-                logger.debug("%s %s %s return %s" % (
-                    args[0].__class__.__name__,
-                    args[0].__class__.__module__[len('glances_'):],
-                    fct.func_name, ret))
+            logger.debug("%s %s %s return %s" % (
+                args[0].__class__.__name__,
+                args[0].__class__.__module__[len('glances_'):],
+                fct.__name__, ret))
             return ret
         return wrapper
 
     # Mandatory to call the decorator in childs' classes
+    _check_decorator = staticmethod(_check_decorator)
     _log_result_decorator = staticmethod(_log_result_decorator)

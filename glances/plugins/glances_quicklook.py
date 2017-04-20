@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -19,15 +19,19 @@
 
 """Quicklook plugin."""
 
-from glances.core.glances_cpu_percent import cpu_percent
+from glances.cpu_percent import cpu_percent
 from glances.outputs.glances_bars import Bar
 from glances.plugins.glances_plugin import GlancesPlugin
 
 import psutil
+
+cpuinfo_tag = False
 try:
     from cpuinfo import cpuinfo
 except ImportError:
-    cpuinfo_tag = False
+    # Correct issue #754
+    # Waiting for a correction on the upstream Cpuinfo lib
+    pass
 else:
     cpuinfo_tag = True
 
@@ -41,7 +45,7 @@ class Plugin(GlancesPlugin):
 
     def __init__(self, args=None):
         """Init the quicklook plugin."""
-        GlancesPlugin.__init__(self, args=args)
+        super(Plugin, self).__init__(args=args)
 
         # We want to display the stat in the curse interface
         self.display_curse = True
@@ -53,6 +57,7 @@ class Plugin(GlancesPlugin):
         """Reset/init the stats."""
         self.stats = {}
 
+    @GlancesPlugin._check_decorator
     @GlancesPlugin._log_result_decorator
     def update(self):
         """Update quicklook stats using the input method."""
@@ -75,19 +80,18 @@ class Plugin(GlancesPlugin):
         # thanks to the cpuinfo lib: https://github.com/workhorsy/py-cpuinfo
         if cpuinfo_tag:
             cpu_info = cpuinfo.get_cpu_info()
-            self.stats['cpu_name'] = cpu_info['brand']
-            self.stats['cpu_hz_current'] = cpu_info['hz_actual_raw'][0]
-            self.stats['cpu_hz'] = cpu_info['hz_advertised_raw'][0]
-
-        # Update the view
-        self.update_views()
+            #  Check cpu_info (issue #881)
+            if cpu_info is not None:
+                self.stats['cpu_name'] = cpu_info['brand']
+                self.stats['cpu_hz_current'] = cpu_info['hz_actual_raw'][0]
+                self.stats['cpu_hz'] = cpu_info['hz_advertised_raw'][0]
 
         return self.stats
 
     def update_views(self):
         """Update stats views."""
         # Call the father's method
-        GlancesPlugin.update_views(self)
+        super(Plugin, self).update_views()
 
         # Add specifics informations
         # Alert only
@@ -101,45 +105,53 @@ class Plugin(GlancesPlugin):
         ret = []
 
         # Only process if stats exist...
-        if not self.stats or args.disable_quicklook:
+        if not self.stats or self.is_disable():
             return ret
 
         # Define the bar
         bar = Bar(max_width)
 
         # Build the string message
-        if 'cpu_name' in self.stats:
-            msg = '{0} - {1:.2f}/{2:.2f}GHz'.format(self.stats['cpu_name'],
-                                                    self._hz_to_ghz(self.stats['cpu_hz_current']),
-                                                    self._hz_to_ghz(self.stats['cpu_hz']))
-            if len(msg) - 6 <= max_width:
-                ret.append(self.curse_add_line(msg))
-                ret.append(self.curse_new_line())
+        if 'cpu_name' in self.stats and 'cpu_hz_current' in self.stats and 'cpu_hz' in self.stats:
+            msg_name = '{} - '.format(self.stats['cpu_name'])
+            msg_freq = '{:.2f}/{:.2f}GHz'.format(self._hz_to_ghz(self.stats['cpu_hz_current']),
+                                                 self._hz_to_ghz(self.stats['cpu_hz']))
+            if len(msg_name + msg_freq) - 6 <= max_width:
+                ret.append(self.curse_add_line(msg_name))
+            ret.append(self.curse_add_line(msg_freq))
+            ret.append(self.curse_new_line())
         for key in ['cpu', 'mem', 'swap']:
             if key == 'cpu' and args.percpu:
                 for cpu in self.stats['percpu']:
                     bar.percent = cpu['total']
                     if cpu[cpu['key']] < 10:
-                        msg = '{0:3}{1} '.format(key.upper(), cpu['cpu_number'])
+                        msg = '{:3}{} '.format(key.upper(), cpu['cpu_number'])
                     else:
-                        msg = '{0:4} '.format(cpu['cpu_number'])
-                    ret.append(self.curse_add_line(msg))
-                    ret.append(self.curse_add_line(bar.pre_char, decoration='BOLD'))
-                    ret.append(self.curse_add_line(str(bar), self.get_views(key=key, option='decoration')))
-                    ret.append(self.curse_add_line(bar.post_char, decoration='BOLD'))
-                    ret.append(self.curse_add_line('  '))
+                        msg = '{:4} '.format(cpu['cpu_number'])
+                    ret.extend(self._msg_create_line(msg, bar, key))
                     ret.append(self.curse_new_line())
             else:
                 bar.percent = self.stats[key]
-                msg = '{0:4} '.format(key.upper())
-                ret.append(self.curse_add_line(msg))
-                ret.append(self.curse_add_line(bar.pre_char, decoration='BOLD'))
-                ret.append(self.curse_add_line(str(bar), self.get_views(key=key, option='decoration')))
-                ret.append(self.curse_add_line(bar.post_char, decoration='BOLD'))
-                ret.append(self.curse_add_line('  '))
+                msg = '{:4} '.format(key.upper())
+                ret.extend(self._msg_create_line(msg, bar, key))
                 ret.append(self.curse_new_line())
 
+        # Remove the last new line
+        ret.pop()
+
         # Return the message with decoration
+        return ret
+
+    def _msg_create_line(self, msg, bar, key):
+        """Create a new line to the Quickview"""
+        ret = []
+
+        ret.append(self.curse_add_line(msg))
+        ret.append(self.curse_add_line(bar.pre_char, decoration='BOLD'))
+        ret.append(self.curse_add_line(str(bar), self.get_views(key=key, option='decoration')))
+        ret.append(self.curse_add_line(bar.post_char, decoration='BOLD'))
+        ret.append(self.curse_add_line('  '))
+
         return ret
 
     def _hz_to_ghz(self, hz):

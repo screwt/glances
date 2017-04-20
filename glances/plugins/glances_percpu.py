@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -19,7 +19,7 @@
 
 """Per-CPU plugin."""
 
-from glances.core.glances_cpu_percent import cpu_percent
+from glances.cpu_percent import cpu_percent
 from glances.plugins.glances_plugin import GlancesPlugin
 
 
@@ -33,7 +33,7 @@ class Plugin(GlancesPlugin):
 
     def __init__(self, args=None):
         """Init the plugin."""
-        GlancesPlugin.__init__(self, args=args)
+        super(Plugin, self).__init__(args=args)
 
         # We want to display the stat in the curse interface
         self.display_curse = True
@@ -49,6 +49,8 @@ class Plugin(GlancesPlugin):
         """Reset/init the stats."""
         self.stats = []
 
+    @GlancesPlugin._check_decorator
+    @GlancesPlugin._log_result_decorator
     def update(self):
         """Update per-CPU stats using the input method."""
         # Reset stats
@@ -69,10 +71,6 @@ class Plugin(GlancesPlugin):
         # Init the return message
         ret = []
 
-        # Only process if plugin not disable
-        if args.disable_cpu:
-            return ret
-
         # No per CPU stat ? Exit...
         if not self.stats:
             msg = 'PER CPU not available'
@@ -81,12 +79,16 @@ class Plugin(GlancesPlugin):
 
         # Build the string message
         # Header
-        msg = '{0:8}'.format('PER CPU')
+        msg = '{:8}'.format('PER CPU')
         ret.append(self.curse_add_line(msg, "TITLE"))
 
         # Total per-CPU usage
         for cpu in self.stats:
-            msg = '{0:>6}%'.format(cpu['total'])
+            try:
+                msg = '{:6.1f}%'.format(cpu['total'])
+            except TypeError:
+                # TypeError: string indices must be integers (issue #1027)
+                msg = '{:>6}%'.format('?')
             ret.append(self.curse_add_line(msg))
 
         # Stats per-CPU
@@ -95,10 +97,14 @@ class Plugin(GlancesPlugin):
                 continue
 
             ret.append(self.curse_new_line())
-            msg = '{0:8}'.format(stat + ':')
+            msg = '{:8}'.format(stat + ':')
             ret.append(self.curse_add_line(msg))
             for cpu in self.stats:
-                msg = '{0:>6}%'.format(cpu[stat])
+                try:
+                    msg = '{:6.1f}%'.format(cpu[stat])
+                except TypeError:
+                    # TypeError: string indices must be integers (issue #1027)
+                    msg = '{:>6}%'.format('?')
                 ret.append(self.curse_add_line(msg,
                                                self.get_alert(cpu[stat], header=stat)))
 

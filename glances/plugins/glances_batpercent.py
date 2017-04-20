@@ -2,7 +2,7 @@
 #
 # This file is part of Glances.
 #
-# Copyright (C) 2015 Nicolargo <nicolas@nicolargo.com>
+# Copyright (C) 2017 Nicolargo <nicolas@nicolargo.com>
 #
 # Glances is free software; you can redistribute it and/or modify
 # it under the terms of the GNU Lesser General Public License as published by
@@ -19,15 +19,26 @@
 
 """Battery plugin."""
 
-# Import Glances libs
-from glances.core.glances_logging import logger
+import psutil
+
+from glances.logger import logger
 from glances.plugins.glances_plugin import GlancesPlugin
 
 # Batinfo library (optional; Linux-only)
+batinfo_tag = True
 try:
     import batinfo
 except ImportError:
-    logger.debug("Batinfo library not found. Glances cannot grab battery info.")
+    logger.debug("batpercent plugin - Batinfo library not found. Trying fallback to PsUtil.")
+    batinfo_tag = False
+
+# PsUtil library 5.2.0 or higher (optional; Linux-only)
+psutil_tag = True
+try:
+    psutil.sensors_battery()
+except AttributeError:
+    logger.debug("batpercent plugin - PsUtil 5.2.0 or higher is needed to grab battery stats.")
+    psutil_tag = False
 
 
 class Plugin(GlancesPlugin):
@@ -39,7 +50,7 @@ class Plugin(GlancesPlugin):
 
     def __init__(self, args=None):
         """Init the plugin."""
-        GlancesPlugin.__init__(self, args=args)
+        super(Plugin, self).__init__(args=args)
 
         # Init the sensor class
         self.glancesgrabbat = GlancesGrabBat()
@@ -55,6 +66,7 @@ class Plugin(GlancesPlugin):
         """Reset/init the stats."""
         self.stats = []
 
+    @GlancesPlugin._check_decorator
     @GlancesPlugin._log_result_decorator
     def update(self):
         """Update battery capacity stats using the input method."""
@@ -80,24 +92,34 @@ class GlancesGrabBat(object):
 
     def __init__(self):
         """Init batteries stats."""
-        try:
+        self.bat_list = []
+
+        if batinfo_tag:
             self.bat = batinfo.batteries()
-            self.initok = True
-            self.bat_list = []
-            self.update()
-        except Exception as e:
-            self.initok = False
-            logger.debug("Cannot init GlancesGrabBat class (%s)" % e)
+        elif psutil_tag:
+            self.bat = psutil
+        else:
+            self.bat = None
 
     def update(self):
         """Update the stats."""
-        if self.initok:
+        if batinfo_tag:
+            # Use the batinfo lib to grab the stats
+            # Compatible with multiple batteries
             self.bat.update()
             self.bat_list = [{
                 'label': 'Battery',
                 'value': self.battery_percent,
                 'unit': '%'}]
+        elif psutil_tag and hasattr(self.bat.sensors_battery(), 'percent'):
+            # Use the PSUtil 5.2.0 or higher lib to grab the stats
+            # Give directly the battery percent
+            self.bat_list = [{
+                'label': 'Battery',
+                'value': int(self.bat.sensors_battery().percent),
+                'unit': '%'}]
         else:
+            # No stats...
             self.bat_list = []
 
     def get(self):
@@ -107,7 +129,7 @@ class GlancesGrabBat(object):
     @property
     def battery_percent(self):
         """Get batteries capacity percent."""
-        if not self.initok or not self.bat.stat:
+        if not batinfo_tag or not self.bat.stat:
             return []
 
         # Init the bsum (sum of percent)
