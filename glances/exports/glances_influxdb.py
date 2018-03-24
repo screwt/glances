@@ -157,6 +157,10 @@ class Export(GlancesExport):
         else:
             data = [{'name': name, 'columns': new_col, 'points': [points]}]
         # Write input to the InfluxDB database
+        from pprint import pprint
+        pprint(data)
+        pprint(self.tags)
+        
         try:
             self.client.write_points(data)
         except Exception as e:
